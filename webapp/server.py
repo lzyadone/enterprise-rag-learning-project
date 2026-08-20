@@ -1,0 +1,626 @@
+"""Local web workbench for the enterprise RAG learning project."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import mimetypes
+import sys
+import time
+import uuid
+from dataclasses import dataclass, field
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from typing import Any
+from urllib.parse import unquote, urlparse
+
+import chromadb
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.answer_audit import DEFAULT_AUDIT_MODEL, audit_answer_with_deepseek, combine_audits, deterministic_audit  # noqa: E402
+from src.answer_repair import repair_answer_with_deepseek  # noqa: E402
+from src.context_assembly import assemble_context, build_answer_prompt  # noqa: E402
+from src.coverage_audit import audit_coverage_with_deepseek, deterministic_coverage_audit  # noqa: E402
+from src.deepseek_client import DEFAULT_BASE_URL, DEFAULT_MODEL, chat_completion, get_deepseek_api_key  # noqa: E402
+from src.long_memory import DEFAULT_NAMESPACE, LongMemoryStore, format_long_memory_context  # noqa: E402
+from src.ollama_http import generate  # noqa: E402
+from src.retrieval import RetrievedChunk, direct_retrieve, planned_retrieve  # noqa: E402
+
+
+STATIC_DIR = PROJECT_ROOT / "webapp" / "static"
+DEFAULT_DB_DIR = PROJECT_ROOT / "data" / "indexes" / "llm_rag_chroma"
+DEFAULT_COLLECTION = "llm_rag_docs"
+DEFAULT_MEMORY_SQLITE = PROJECT_ROOT / "data" / "runtime" / "long_memory.sqlite3"
+DEFAULT_MEMORY_CHROMA_DIR = PROJECT_ROOT / "data" / "runtime" / "long_memory_chroma"
+
+
+@dataclass
+class ConversationTurn:
+    user: str
+    answer: str
+    source_titles: list[str]
+    created_at: float
+
+
+@dataclass
+class ConversationMemory:
+    session_id: str
+    turns: list[ConversationTurn] = field(default_factory=list)
+    max_turns: int = 8
+
+    def add_turn(self, user: str, answer: str, sources: list[dict[str, Any]]) -> None:
+        self.turns.append(
+            ConversationTurn(
+                user=user,
+                answer=answer,
+                source_titles=[str(source.get("title", "")) for source in sources[:3]],
+                created_at=time.time(),
+            )
+        )
+        self.turns = self.turns[-self.max_turns :]
+
+    def context(self, max_chars: int = 1600) -> str:
+        if not self.turns:
+            return ""
+        lines = ["最近对话："]
+        for idx, turn in enumerate(self.turns[-4:], start=1):
+            answer_preview = " ".join(turn.answer.split())[:220]
+            lines.append(f"{idx}. 用户：{turn.user}")
+            lines.append(f"   助手摘要：{answer_preview}")
+            if turn.source_titles:
+                lines.append(f"   相关来源：{', '.join(turn.source_titles)}")
+        return "\n".join(lines)[-max_chars:]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "session_id": self.session_id,
+            "turn_count": len(self.turns),
+            "context": self.context(),
+            "turns": [
+                {
+                    "user": turn.user,
+                    "answer_preview": " ".join(turn.answer.split())[:260],
+                    "source_titles": turn.source_titles,
+                    "created_at": turn.created_at,
+                }
+                for turn in self.turns[-6:]
+            ],
+        }
+
+
+class AppState:
+    def __init__(self, db_dir: Path, collection_name: str, memory_sqlite: Path, memory_chroma_dir: Path) -> None:
+        self.db_dir = db_dir
+        self.collection_name = collection_name
+        self.client = chromadb.PersistentClient(path=str(db_dir))
+        self.collection = self.client.get_collection(name=collection_name)
+        self.long_memory = LongMemoryStore(memory_sqlite, memory_chroma_dir)
+        self.memories: dict[str, ConversationMemory] = {}
+
+    def memory(self, session_id: str | None) -> ConversationMemory:
+        sid = session_id or str(uuid.uuid4())
+        if sid not in self.memories:
+            self.memories[sid] = ConversationMemory(session_id=sid)
+        return self.memories[sid]
+
+
+STATE: AppState
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run the local RAG web workbench.")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--db-dir", type=Path, default=DEFAULT_DB_DIR)
+    parser.add_argument("--collection", default=DEFAULT_COLLECTION)
+    parser.add_argument("--memory-sqlite", type=Path, default=DEFAULT_MEMORY_SQLITE)
+    parser.add_argument("--memory-chroma-dir", type=Path, default=DEFAULT_MEMORY_CHROMA_DIR)
+    return parser.parse_args()
+
+
+class RAGRequestHandler(BaseHTTPRequestHandler):
+    server_version = "EnterpriseRAGWorkbench/0.1"
+
+    def do_GET(self) -> None:  # noqa: N802
+        path = unquote(urlparse(self.path).path)
+        if path == "/api/status":
+            self.write_json(
+                {
+                    "ok": True,
+                    "collection": STATE.collection_name,
+                    "indexed_count": STATE.collection.count(),
+                    "deepseek_key": bool(get_deepseek_api_key()),
+                    "long_memory": STATE.long_memory.stats(DEFAULT_NAMESPACE),
+                }
+            )
+            return
+
+        if path in {"", "/"}:
+            path = "/index.html"
+        file_path = (STATIC_DIR / path.lstrip("/")).resolve()
+        if not str(file_path).startswith(str(STATIC_DIR.resolve())) or not file_path.exists():
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        content_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
+        data = file_path.read_bytes()
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type + "; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_POST(self) -> None:  # noqa: N802
+        path = urlparse(self.path).path
+        if path == "/api/memory/clear":
+            try:
+                payload = self.read_json()
+                namespace = str(payload.get("namespace") or DEFAULT_NAMESPACE)
+                STATE.long_memory.clear(namespace)
+                self.write_json({"ok": True, "long_memory": STATE.long_memory.stats(namespace)})
+            except Exception as exc:  # noqa: BLE001
+                self.write_json({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, status=500)
+            return
+
+        if path != "/api/ask":
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        try:
+            payload = self.read_json()
+            response = handle_ask(payload)
+            self.write_json(response)
+        except Exception as exc:  # noqa: BLE001 - surface errors to the local UI.
+            self.write_json({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, status=500)
+
+    def read_json(self) -> dict[str, Any]:
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        body = self.rfile.read(length).decode("utf-8")
+        value = json.loads(body or "{}")
+        if not isinstance(value, dict):
+            raise ValueError("Request body must be a JSON object")
+        return value
+
+    def write_json(self, payload: dict[str, Any], status: int = 200) -> None:
+        data = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+        sys.stderr.write("%s - %s\n" % (self.address_string(), format % args))
+
+
+def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
+    start = time.time()
+    query = str(payload.get("query", "")).strip()
+    if not query:
+        raise ValueError("query is required")
+
+    memory = STATE.memory(str(payload.get("session_id") or "") or None)
+    use_memory = bool(payload.get("use_memory", True))
+    use_long_memory = bool(payload.get("use_long_memory", use_memory))
+    memory_namespace = str(payload.get("memory_namespace") or DEFAULT_NAMESPACE)
+    llm_provider = str(payload.get("llm_provider") or ("deepseek" if get_deepseek_api_key() else "ollama"))
+    retrieval_mode = str(payload.get("retrieval_mode") or "planned")
+    rerank_mode = str(payload.get("rerank_mode") or "lexical")
+    embedding_model = str(payload.get("embedding_model") or "bge-m3")
+    ollama_host = str(payload.get("ollama_host") or "http://127.0.0.1:11434")
+    top_k = int(payload.get("top_k") or 5)
+    candidate_k = int(payload.get("candidate_k") or 12)
+    max_context_chars = int(payload.get("max_context_chars") or 9000)
+    audit_answer = bool(payload.get("audit_answer", True))
+
+    effective_query = build_effective_query(query, memory if use_memory else None)
+    long_memory_hits = []
+    long_memory_error = None
+    if use_long_memory:
+        try:
+            long_memory_hits = STATE.long_memory.search(
+                effective_query,
+                namespace=memory_namespace,
+                embedding_model=embedding_model,
+                ollama_host=ollama_host,
+                top_k=int(payload.get("long_memory_top_k") or 5),
+            )
+        except Exception as exc:  # noqa: BLE001
+            long_memory_error = f"{type(exc).__name__}: {exc}"
+
+    memory_answer_mode = is_memory_answer_query(query)
+    if memory_answer_mode:
+        plan = None
+        retrieved = []
+    elif retrieval_mode == "direct":
+        plan = None
+        retrieved = direct_retrieve(
+            STATE.collection,
+            effective_query,
+            embedding_model,
+            ollama_host,
+            top_k=top_k,
+            candidate_k=candidate_k,
+            rerank_mode=rerank_mode,
+        )
+    else:
+        plan, retrieved = planned_retrieve(
+            STATE.collection,
+            effective_query,
+            embedding_model,
+            ollama_host,
+            top_k=top_k,
+            candidate_k=candidate_k,
+            rerank_mode=rerank_mode,
+        )
+
+    short_memory_context = memory.context() if use_memory else ""
+    memory_context = build_memory_context(short_memory_context, long_memory_hits)
+    assembled = assemble_context(query, retrieved, memory_context=memory_context, max_chars=max_context_chars)
+    answer_requirements = [aspect.question for aspect in plan.aspects] if plan else []
+    if memory_answer_mode:
+        prompt = build_memory_answer_prompt(query, memory_context)
+    else:
+        prompt = build_answer_prompt(query, assembled, answer_requirements=answer_requirements)
+    answer = generate_with_provider(
+        prompt,
+        llm_provider=llm_provider,
+        ollama_model=str(payload.get("ollama_model") or "qwen2.5:1.5b"),
+        ollama_host=ollama_host,
+        deepseek_model=str(payload.get("deepseek_model") or DEFAULT_MODEL),
+        deepseek_base_url=str(payload.get("deepseek_base_url") or DEFAULT_BASE_URL),
+    )
+
+    audit = None
+    if audit_answer:
+        if memory_answer_mode:
+            audit = build_memory_answer_audit(answer, has_memory=bool(memory_context.strip()))
+        else:
+            audit = run_full_audit(query, assembled.evidence_context, answer, retrieved, plan, payload)
+        if not memory_answer_mode and should_repair_answer(audit) and get_deepseek_api_key():
+            try:
+                repaired_answer = repair_answer_with_deepseek(
+                    query,
+                    assembled.evidence_context,
+                    answer,
+                    audit,
+                    model=str(payload.get("deepseek_repair_model") or DEFAULT_AUDIT_MODEL),
+                    base_url=str(payload.get("deepseek_base_url") or DEFAULT_BASE_URL),
+                )
+                if repaired_answer.strip():
+                    repaired_audit = run_full_audit(query, assembled.evidence_context, repaired_answer, retrieved, plan, payload)
+                    repaired_audit["repair"] = {
+                        "attempted": True,
+                        "used": audit_quality_score(repaired_audit) >= audit_quality_score(audit),
+                        "original_quality_pass": bool(audit.get("quality_pass", audit.get("overall_pass"))),
+                    }
+                    if repaired_audit["repair"]["used"]:
+                        answer = repaired_answer
+                        audit = repaired_audit
+                    else:
+                        audit["repair"] = {
+                            "attempted": True,
+                            "used": False,
+                            "reason": "repaired answer did not improve audit score",
+                        }
+            except Exception as exc:  # noqa: BLE001
+                audit["repair"] = {
+                    "attempted": True,
+                    "used": False,
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+
+    source_rows = chunks_to_rows(retrieved)
+    memory.add_turn(query, answer, source_rows)
+    stored_long_memories = []
+    if use_long_memory and not memory_answer_mode:
+        try:
+            stored_long_memories = STATE.long_memory.add_turn(
+                namespace=memory_namespace,
+                session_id=memory.session_id,
+                user=query,
+                answer=answer,
+                sources=source_rows,
+                embedding_model=embedding_model,
+                ollama_host=ollama_host,
+                use_llm_extraction=bool(payload.get("extract_long_memory", True)),
+            )
+        except Exception as exc:  # noqa: BLE001
+            long_memory_error = f"{type(exc).__name__}: {exc}"
+    elapsed = round(time.time() - start, 2)
+    memory_payload = memory.as_dict()
+    memory_payload["long_term"] = {
+        "enabled": use_long_memory,
+        "namespace": memory_namespace,
+        "retrieved": [record.as_dict() for record in long_memory_hits],
+        "stored": [record.as_dict() for record in stored_long_memories],
+        "stats": STATE.long_memory.stats(memory_namespace),
+        "error": long_memory_error,
+    }
+    return {
+        "ok": True,
+        "session_id": memory.session_id,
+        "query": query,
+        "effective_query": effective_query,
+        "settings": {
+            "llm_provider": llm_provider,
+            "retrieval_mode": retrieval_mode,
+            "rerank_mode": rerank_mode,
+            "top_k": top_k,
+            "candidate_k": candidate_k,
+            "max_context_chars": max_context_chars,
+            "use_memory": use_memory,
+            "use_long_memory": use_long_memory,
+            "memory_namespace": memory_namespace,
+            "memory_answer_mode": memory_answer_mode,
+        },
+        "plan": plan.as_dict() if plan else None,
+        "sources": source_rows,
+        "context": assembled.as_dict(),
+        "answer": answer,
+        "audit": audit,
+        "memory": memory_payload,
+        "timings": {"total_seconds": elapsed},
+    }
+
+
+def build_effective_query(query: str, memory: ConversationMemory | None) -> str:
+    if not memory or not memory.turns:
+        return query
+    recent_questions = " ".join(turn.user for turn in memory.turns[-2:])
+    if len(query) < 24 or any(marker in query for marker in ["这个", "上面", "刚才", "继续", "下一步", "它"]):
+        return f"{recent_questions} {query}".strip()
+    return query
+
+
+def build_memory_context(short_memory_context: str, long_memory_hits: list[Any]) -> str:
+    parts = []
+    if short_memory_context.strip():
+        parts.append(short_memory_context.strip())
+    long_context = format_long_memory_context(long_memory_hits)
+    if long_context:
+        parts.append(long_context)
+    return "\n\n".join(parts)
+
+
+def is_memory_answer_query(query: str) -> bool:
+    markers = [
+        "我之前",
+        "刚才",
+        "上次",
+        "之前说",
+        "记得",
+        "偏好",
+        "要求",
+        "我们之前",
+        "项目进展",
+        "做到哪",
+        "进行到哪",
+        "接下来",
+        "下一步",
+    ]
+    return any(marker in query for marker in markers)
+
+
+def build_memory_answer_prompt(query: str, memory_context: str) -> str:
+    return f"""你是这个本地 RAG 项目的学习助手。请只根据“对话记忆/长期记忆”回答用户关于过去对话、个人偏好、项目进展或下一步的问题。
+
+规则：
+1. 记忆可以用于回答用户自己的偏好、目标和项目状态。
+2. 不要把记忆当成外部知识库资料引用。
+3. 不要编造记忆里没有的内容；如果记忆不足，就明确说记忆不足。
+4. 用中文，回答要短而清楚。
+
+用户问题：
+{query}
+
+记忆上下文：
+{memory_context or "当前没有可用记忆。"}
+
+请回答：
+"""
+
+
+def build_memory_answer_audit(answer: str, has_memory: bool) -> dict[str, Any]:
+    insufficient = "记忆不足" in answer or "没有可用记忆" in answer or "不足" in answer
+    return {
+        "memory_answer": True,
+        "rule_audit": {
+            "valid_citation_ids": [],
+            "out_of_range_citation_ids": [],
+            "has_sources_section": False,
+            "insufficient_answer": insufficient,
+            "rule_pass": bool(has_memory or insufficient),
+            "rule_issues": [] if has_memory or insufficient else ["memory answer has no available memory"],
+        },
+        "llm_audit": None,
+        "overall_pass": bool(has_memory or insufficient),
+        "quality_pass": bool(has_memory or insufficient),
+    }
+
+
+def generate_with_provider(
+    prompt: str,
+    llm_provider: str,
+    ollama_model: str,
+    ollama_host: str,
+    deepseek_model: str,
+    deepseek_base_url: str,
+) -> str:
+    if llm_provider == "ollama":
+        return generate(prompt, ollama_model, ollama_host, num_ctx=8192, num_predict=1200)
+    if llm_provider == "deepseek":
+        answer = chat_completion(
+            [
+                {
+                    "role": "system",
+                    "content": "你是严谨的大模型工程知识库助手。必须只根据检索资料回答。",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            model=deepseek_model,
+            base_url=deepseek_base_url,
+            temperature=0.1,
+            max_tokens=1600,
+        )
+        if answer.strip():
+            return answer
+        if deepseek_model != "deepseek-chat":
+            fallback_answer = chat_completion(
+                [
+                    {
+                        "role": "system",
+                        "content": "你是严谨的大模型工程知识库助手。必须只根据检索资料回答。",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                model="deepseek-chat",
+                base_url=deepseek_base_url,
+                temperature=0.1,
+                max_tokens=1800,
+            )
+            if fallback_answer.strip():
+                return fallback_answer
+        raise RuntimeError("DeepSeek returned an empty answer")
+    raise ValueError(f"Unsupported llm_provider: {llm_provider}")
+
+
+def run_full_audit(
+    query: str,
+    evidence_context: str,
+    answer: str,
+    retrieved: list[RetrievedChunk],
+    plan: Any,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    audit_error = None
+    rule_audit = deterministic_audit(answer, source_count=len(retrieved))
+    llm_audit = None
+    try:
+        if get_deepseek_api_key():
+            llm_audit = audit_answer_with_deepseek(
+                query,
+                evidence_context,
+                answer,
+                model=str(payload.get("deepseek_audit_model") or DEFAULT_AUDIT_MODEL),
+                base_url=str(payload.get("deepseek_base_url") or DEFAULT_BASE_URL),
+            )
+    except Exception as exc:  # noqa: BLE001
+        audit_error = f"{type(exc).__name__}: {exc}"
+
+    audit = combine_audits(rule_audit, llm_audit)
+    if audit_error:
+        audit["audit_error"] = audit_error
+
+    if plan and getattr(plan, "aspects", None):
+        coverage_error = None
+        rule_coverage = deterministic_coverage_audit(answer, plan.aspects)
+        llm_coverage = None
+        try:
+            if get_deepseek_api_key():
+                llm_coverage = audit_coverage_with_deepseek(
+                    query,
+                    evidence_context,
+                    answer,
+                    plan.aspects,
+                    model=str(payload.get("deepseek_audit_model") or DEFAULT_AUDIT_MODEL),
+                    base_url=str(payload.get("deepseek_base_url") or DEFAULT_BASE_URL),
+                )
+        except Exception as exc:  # noqa: BLE001
+            coverage_error = f"{type(exc).__name__}: {exc}"
+        coverage_audit = combine_coverage_audits(rule_coverage, llm_coverage)
+        if coverage_error:
+            coverage_audit["coverage_error"] = coverage_error
+        audit["coverage_audit"] = coverage_audit
+        audit["quality_pass"] = bool(audit["overall_pass"] and coverage_audit["coverage_pass"])
+    else:
+        audit["quality_pass"] = bool(audit["overall_pass"])
+
+    return audit
+
+
+def should_repair_answer(audit: dict[str, Any]) -> bool:
+    return not bool(audit.get("quality_pass", audit.get("overall_pass")))
+
+
+def audit_quality_score(audit: dict[str, Any]) -> float:
+    llm = audit.get("llm_audit") or {}
+    coverage = (audit.get("coverage_audit") or {}).get("llm_coverage") or {}
+    score = 0.0
+    if audit.get("overall_pass"):
+        score += 10
+    if audit.get("quality_pass"):
+        score += 10
+    if (audit.get("coverage_audit") or {}).get("coverage_pass"):
+        score += 5
+    for key in ["faithfulness_score", "citation_score", "relevance_score"]:
+        score += float(llm.get(key, 0) or 0)
+    score += float(coverage.get("coverage_score", 0) or 0)
+    score += float(coverage.get("source_coverage_score", 0) or 0)
+    return score
+
+
+def chunks_to_rows(chunks: list[RetrievedChunk]) -> list[dict[str, Any]]:
+    rows = []
+    for idx, chunk in enumerate(chunks, start=1):
+        rows.append(
+            {
+                "index": idx,
+                "chunk_id": chunk.chunk_id,
+                "title": chunk.metadata.get("title"),
+                "category": chunk.metadata.get("category"),
+                "heading_path": chunk.metadata.get("heading_path"),
+                "url": chunk.metadata.get("url"),
+                "distance": chunk.distance,
+                "score": chunk.score,
+                "rerank_score": chunk.rerank_score,
+                "rerank_reason": chunk.rerank_reason,
+                "source_query": chunk.source_query,
+                "category_filter": chunk.category_filter,
+                "aspect": chunk.aspect,
+                "preview": " ".join(chunk.document.split())[:420],
+            }
+        )
+    return rows
+
+
+def combine_coverage_audits(
+    rule_coverage: dict[str, Any],
+    llm_coverage: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if llm_coverage is None:
+        return {
+            "rule_coverage": rule_coverage,
+            "llm_coverage": None,
+            "coverage_pass": bool(rule_coverage.get("pass")),
+        }
+
+    llm_pass = bool(llm_coverage.get("pass"))
+    coverage_score = float(llm_coverage.get("coverage_score", 0) or 0)
+    source_coverage_score = float(llm_coverage.get("source_coverage_score", 0) or 0)
+    return {
+        "rule_coverage": rule_coverage,
+        "llm_coverage": llm_coverage,
+        "coverage_pass": bool(rule_coverage.get("pass") and llm_pass and coverage_score >= 4 and source_coverage_score >= 3.5),
+    }
+
+
+def main() -> None:
+    global STATE
+    args = parse_args()
+    STATE = AppState(args.db_dir, args.collection, args.memory_sqlite, args.memory_chroma_dir)
+    server = ThreadingHTTPServer((args.host, args.port), RAGRequestHandler)
+    print(f"RAG workbench running at http://{args.host}:{args.port}")
+    print(f"collection={args.collection} indexed_count={STATE.collection.count()}")
+    print(f"deepseek_key={'set' if get_deepseek_api_key() else 'missing'}")
+    print(f"long_memory_count={STATE.long_memory.count(DEFAULT_NAMESPACE)}")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("stopping server")
+
+
+if __name__ == "__main__":
+    main()

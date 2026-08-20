@@ -1,0 +1,14 @@
+{
+  "total": 8,
+  "top_k": 7,
+  "candidate_k": 16,
+  "rerank_mode": "lexical",
+  "direct_hit@1": 5,
+  "planned_hit@1": 7,
+  "direct_hit@3": 7,
+  "planned_hit@3": 7,
+  "direct_hit@1_rate": 0.625,
+  "planned_hit@1_rate": 0.875,
+  "direct_hit@3_rate": 0.875,
+  "planned_hit@3_rate": 0.875
+}

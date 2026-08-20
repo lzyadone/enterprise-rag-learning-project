@@ -1,0 +1,14 @@
+{
+  "total": 4,
+  "llm_provider": "ollama",
+  "llm_audit": false,
+  "repair_with_deepseek": true,
+  "top_k": 5,
+  "candidate_k": 12,
+  "rule_pass": 0,
+  "overall_pass": 0,
+  "audit_errors": 0,
+  "repair_errors": 4,
+  "rule_pass_rate": 0.0,
+  "overall_pass_rate": 0.0
+}

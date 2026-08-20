@@ -1,0 +1,38 @@
+{
+  "dataset": "C:\\Users\\Lenovo\\Desktop\\大模型官方课程-视频资料\\学习产出\\enterprise-rag-learning-project\\eval\\datasets\\rag_system_smoke_eval.jsonl",
+  "api_url": "http://127.0.0.1:8765/api/ask",
+  "memory_namespace": "rag_eval_20260820-214647",
+  "total": 10,
+  "passed": 8,
+  "failed": 2,
+  "pass_rate": 0.8,
+  "quality_pass": 9,
+  "quality_pass_rate": 0.9,
+  "avg_seconds": 36.2,
+  "settings": {
+    "llm_provider": "deepseek",
+    "retrieval_mode": "planned",
+    "rerank_mode": "lexical",
+    "top_k": 7,
+    "candidate_k": 16,
+    "max_context_chars": 15000,
+    "audit_answer": true
+  },
+  "badcases": [
+    {
+      "id": "query_planning_expansion",
+      "question": "复杂问题在RAG里为什么要做query rewrite或query expansion？",
+      "issues": [
+        "quality: {\"quality_pass\": false, \"overall_pass\": true, \"coverage_pass\": false, \"faithfulness_score\": 5, \"citation_score\": 5, \"relevance_score\": 5, \"repair\": {\"attempted\": true, \"used\": true, \"original_quality_pass\": false}, \"a..."
+      ]
+    },
+    {
+      "id": "enterprise_rag_retrieval",
+      "question": "企业级RAG为什么需要混合检索、metadata过滤和重排，而不是只做一次向量相似度搜索？",
+      "issues": [
+        "aspects: {\"expected\": [\"techniques\", \"bottlenecks\"], \"actual\": [], \"hits\": [], \"min_hits\": 1}",
+        "categories: {\"expected\": [\"retrieval\", \"reranking\", \"vector db\", \"RAG challenges\"], \"actual\": [\"RAG overview\", \"vector db\"], \"hits\": [\"vector db\"], \"min_hits\": 2}"
+      ]
+    }
+  ]
+}

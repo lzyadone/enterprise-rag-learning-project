@@ -1,0 +1,22 @@
+{
+  "dataset": "C:\\Users\\Lenovo\\Desktop\\大模型官方课程-视频资料\\学习产出\\enterprise-rag-learning-project\\eval\\datasets\\rag_system_smoke_eval.jsonl",
+  "api_url": "http://127.0.0.1:8765/api/ask",
+  "memory_namespace": "rag_eval_20260820-210848",
+  "total": 1,
+  "passed": 1,
+  "failed": 0,
+  "pass_rate": 1.0,
+  "quality_pass": 1,
+  "quality_pass_rate": 1.0,
+  "avg_seconds": 54.7,
+  "settings": {
+    "llm_provider": "deepseek",
+    "retrieval_mode": "planned",
+    "rerank_mode": "lexical",
+    "top_k": 7,
+    "candidate_k": 16,
+    "max_context_chars": 15000,
+    "audit_answer": true
+  },
+  "badcases": []
+}

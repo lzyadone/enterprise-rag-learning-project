@@ -1,0 +1,11 @@
+{
+  "total": 8,
+  "direct_hit@1": 4,
+  "planned_hit@1": 8,
+  "direct_hit@3": 6,
+  "planned_hit@3": 8,
+  "direct_hit@1_rate": 0.5,
+  "planned_hit@1_rate": 1.0,
+  "direct_hit@3_rate": 0.75,
+  "planned_hit@3_rate": 1.0
+}

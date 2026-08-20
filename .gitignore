@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Local downloaded/cache data. Keep manifests and scripts in git.
+data/raw/
+data/processed/
+data/indexes/
+data/runtime/
+
+# Local vector database files
+*.sqlite3
+*.parquet
+*.bin
+
+# Secrets and local environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Frontend/local tooling
+node_modules/
+dist/
+build/
+
+# Large eval records can be regenerated; keep summary.md files for portfolio notes.
+eval/**/results.jsonl

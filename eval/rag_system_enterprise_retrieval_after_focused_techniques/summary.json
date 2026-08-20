@@ -1,0 +1,30 @@
+{
+  "dataset": "C:\\Users\\Lenovo\\Desktop\\大模型官方课程-视频资料\\学习产出\\enterprise-rag-learning-project\\eval\\datasets\\rag_system_smoke_eval.jsonl",
+  "api_url": "http://127.0.0.1:8765/api/ask",
+  "memory_namespace": "rag_eval_20260820-220330",
+  "total": 1,
+  "passed": 0,
+  "failed": 1,
+  "pass_rate": 0.0,
+  "quality_pass": 0,
+  "quality_pass_rate": 0.0,
+  "avg_seconds": 38.99,
+  "settings": {
+    "llm_provider": "deepseek",
+    "retrieval_mode": "planned",
+    "rerank_mode": "lexical",
+    "top_k": 7,
+    "candidate_k": 16,
+    "max_context_chars": 15000,
+    "audit_answer": true
+  },
+  "badcases": [
+    {
+      "id": "enterprise_rag_retrieval",
+      "question": "企业级RAG为什么需要混合检索、metadata过滤和重排，而不是只做一次向量相似度搜索？",
+      "issues": [
+        "quality: {\"quality_pass\": false, \"overall_pass\": true, \"coverage_pass\": false, \"faithfulness_score\": 4, \"citation_score\": 4, \"relevance_score\": 5, \"repair\": {\"attempted\": true, \"used\": true, \"original_quality_pass\": false}, \"a..."
+      ]
+    }
+  ]
+}
