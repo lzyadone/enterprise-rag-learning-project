@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -9,7 +10,8 @@ from typing import Any
 import chromadb
 
 from src.bm25_retrieval import get_bm25_index
-from src.ollama_http import embed_query
+from src.cross_encoder_reranking import cross_encoder_rerank
+from src.ollama_http import embed_query, unload_embedding_model
 from src.query_planning import QueryPlan, plan_query
 from src.reranking import lexical_rerank
 
@@ -158,6 +160,7 @@ def direct_retrieve(
         include=["documents", "metadatas", "distances"],
     )
     candidates = unpack_results(results, query, category)
+    prepare_model_residency(rerank_mode, embedding_model, ollama_host)
     return rerank(query, candidates, top_k, rerank_mode)
 
 
@@ -210,6 +213,7 @@ def hybrid_retrieve(
     )
     sparse = bm25_retrieve(query, top_k=retrieval_k, category=category, chunks_path=chunks_path)
     fused = reciprocal_rank_fusion([dense, sparse])
+    prepare_model_residency(rerank_mode, embedding_model, ollama_host)
     return rerank(query, fused, top_k, rerank_mode)
 
 
@@ -304,7 +308,16 @@ def planned_retrieve(
             )
 
     fused = reciprocal_rank_fusion(retrieval_runs)
-    ranked = rerank(query, fused, len(fused), rerank_mode)
+    rerank_pool = fused
+    if rerank_mode == "cross_encoder":
+        rerank_pool_size = min(len(fused), max(candidate_k, top_k * 3))
+        rerank_pool = select_with_plan_coverage(fused, rerank_pool_size, plan)
+        if rerank_pool_size < len(fused):
+            plan.warnings.append(
+                f"cross-encoder pool limited from {len(fused)} to {rerank_pool_size} candidates"
+            )
+    prepare_model_residency(rerank_mode, embedding_model, ollama_host)
+    ranked = rerank(query, rerank_pool, len(rerank_pool), rerank_mode)
     ranked = apply_plan_boosts(ranked, plan)
     return plan, select_with_plan_coverage(ranked, top_k, plan)
 
@@ -352,7 +365,19 @@ def rerank(query: str, candidates: list[RetrievedChunk], top_k: int, rerank_mode
         return candidates[:top_k]
     if rerank_mode == "lexical":
         return lexical_rerank(query, candidates, top_k=top_k)
+    if rerank_mode == "cross_encoder":
+        return cross_encoder_rerank(query, candidates, top_k=top_k)
     raise ValueError(f"Unsupported rerank_mode: {rerank_mode}")
+
+
+def prepare_model_residency(rerank_mode: str, embedding_model: str, ollama_host: str) -> None:
+    """Avoid overlapping Ollama embeddings and a local GPU reranker on small machines."""
+    if rerank_mode != "cross_encoder":
+        return
+    enabled = os.getenv("RAG_EXCLUSIVE_MODEL_RESIDENCY", "1").strip().casefold()
+    if enabled in {"0", "false", "no", "off"}:
+        return
+    unload_embedding_model(embedding_model, ollama_host)
 
 
 def apply_plan_boosts(ranked: list[RetrievedChunk], plan: QueryPlan) -> list[RetrievedChunk]:

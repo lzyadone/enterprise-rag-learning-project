@@ -72,7 +72,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ollama-host", default="http://127.0.0.1:11434")
     parser.add_argument("--top-k", type=int, default=3)
     parser.add_argument("--candidate-k", type=int, default=12)
-    parser.add_argument("--rerank-mode", choices=["none", "lexical"], default="lexical")
+    parser.add_argument("--rerank-mode", choices=["none", "lexical", "cross_encoder"], default="lexical")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     return parser.parse_args()
 

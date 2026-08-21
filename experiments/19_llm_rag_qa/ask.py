@@ -46,7 +46,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--candidate-k", type=int, default=12)
     parser.add_argument("--category", default=None)
     parser.add_argument("--retrieval-mode", choices=["direct", "planned"], default="planned")
-    parser.add_argument("--rerank-mode", choices=["none", "lexical"], default="lexical")
+    parser.add_argument("--rerank-mode", choices=["none", "lexical", "cross_encoder"], default="lexical")
     parser.add_argument("--max-plan-categories", type=int, default=2)
     parser.add_argument("--max-context-chars", type=int, default=9000)
     parser.add_argument("--no-generate", action="store_true")

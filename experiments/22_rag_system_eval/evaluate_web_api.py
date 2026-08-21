@@ -42,7 +42,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--llm-provider", choices=["deepseek", "ollama"], default="deepseek")
     parser.add_argument("--retrieval-mode", choices=["planned", "direct"], default="planned")
     parser.add_argument("--retrieval-strategy", choices=["dense", "hybrid"], default="dense")
-    parser.add_argument("--rerank-mode", choices=["lexical", "none"], default="lexical")
+    parser.add_argument("--rerank-mode", choices=["lexical", "cross_encoder", "none"], default="lexical")
     parser.add_argument("--top-k", type=int, default=7)
     parser.add_argument("--candidate-k", type=int, default=16)
     parser.add_argument("--max-context-chars", type=int, default=15000)

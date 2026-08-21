@@ -25,6 +25,7 @@ from src.answer_audit import DEFAULT_AUDIT_MODEL, audit_answer_with_deepseek, co
 from src.answer_repair import repair_answer_with_deepseek  # noqa: E402
 from src.context_assembly import assemble_context, build_answer_prompt  # noqa: E402
 from src.coverage_audit import audit_coverage_with_deepseek, deterministic_coverage_audit  # noqa: E402
+from src.cross_encoder_reranking import runtime_config as reranker_runtime_config  # noqa: E402
 from src.deepseek_client import DEFAULT_BASE_URL, DEFAULT_MODEL, chat_completion, get_deepseek_api_key  # noqa: E402
 from src.long_memory import DEFAULT_NAMESPACE, LongMemoryStore, format_long_memory_context  # noqa: E402
 from src.ollama_http import generate  # noqa: E402
@@ -134,6 +135,7 @@ class RAGRequestHandler(BaseHTTPRequestHandler):
                     "collection": STATE.collection_name,
                     "indexed_count": STATE.collection.count(),
                     "deepseek_key": bool(get_deepseek_api_key()),
+                    "reranker": reranker_runtime_config(),
                     "long_memory": STATE.long_memory.stats(DEFAULT_NAMESPACE),
                 }
             )
@@ -356,6 +358,7 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
             "retrieval_mode": retrieval_mode,
             "retrieval_strategy": retrieval_strategy,
             "rerank_mode": rerank_mode,
+            "reranker": reranker_runtime_config() if rerank_mode == "cross_encoder" else None,
             "top_k": top_k,
             "candidate_k": candidate_k,
             "max_context_chars": max_context_chars,
