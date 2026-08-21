@@ -41,6 +41,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout", type=int, default=360)
     parser.add_argument("--llm-provider", choices=["deepseek", "ollama"], default="deepseek")
     parser.add_argument("--retrieval-mode", choices=["planned", "direct"], default="planned")
+    parser.add_argument("--retrieval-strategy", choices=["dense", "hybrid"], default="dense")
     parser.add_argument("--rerank-mode", choices=["lexical", "none"], default="lexical")
     parser.add_argument("--top-k", type=int, default=7)
     parser.add_argument("--candidate-k", type=int, default=16)
@@ -156,6 +157,7 @@ def build_payload(args: argparse.Namespace, question: str, namespace: str, sessi
         "session_id": session_id,
         "llm_provider": args.llm_provider,
         "retrieval_mode": args.retrieval_mode,
+        "retrieval_strategy": args.retrieval_strategy,
         "rerank_mode": args.rerank_mode,
         "top_k": args.top_k,
         "candidate_k": args.candidate_k,
@@ -383,6 +385,7 @@ def build_summary(args: argparse.Namespace, namespace: str, records: list[dict[s
         "settings": {
             "llm_provider": args.llm_provider,
             "retrieval_mode": args.retrieval_mode,
+            "retrieval_strategy": args.retrieval_strategy,
             "rerank_mode": args.rerank_mode,
             "top_k": args.top_k,
             "candidate_k": args.candidate_k,
@@ -425,6 +428,7 @@ def summary_markdown(summary: dict[str, Any], records: list[dict[str, Any]]) -> 
         f"- avg_seconds: {summary['avg_seconds']}",
         f"- llm_provider: {summary['settings']['llm_provider']}",
         f"- retrieval_mode: {summary['settings']['retrieval_mode']}",
+        f"- retrieval_strategy: {summary['settings']['retrieval_strategy']}",
         f"- rerank_mode: {summary['settings']['rerank_mode']}",
         f"- top_k/candidate_k: {summary['settings']['top_k']}/{summary['settings']['candidate_k']}",
         f"- max_context_chars: {summary['settings']['max_context_chars']}",

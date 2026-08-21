@@ -83,6 +83,7 @@ async function ask() {
     query,
     llm_provider: el("llmProvider").value,
     retrieval_mode: el("retrievalMode").value,
+    retrieval_strategy: el("retrievalStrategy").value,
     rerank_mode: el("rerankMode").value,
     top_k: Number(el("topK").value),
     candidate_k: Number(el("candidateK").value),
@@ -195,6 +196,7 @@ function renderPlan(data) {
     </div>`,
     `<div class="kv">
       <b>mode</b><span>${escapeHtml(settings.retrieval_mode)}</span>
+      <b>channel</b><span>${escapeHtml(settings.retrieval_strategy || "dense")}</span>
       <b>effective query</b><span>${escapeHtml(data.effective_query)}</span>
       <b>provider</b><span>${escapeHtml(settings.llm_provider)}</span>
       <b>rerank</b><span>${escapeHtml(settings.rerank_mode)}</span>
@@ -232,7 +234,7 @@ function renderSources(sources) {
         <span class="badge">${escapeHtml(source.category || "")}</span>
       </div>
       <div class="meta">
-        score ${formatNum(source.score)} · distance ${formatNum(source.distance)}${source.aspect ? ` · aspect ${escapeHtml(source.aspect)}` : ""}
+        score ${formatNum(source.score)} · distance ${formatNum(source.distance)} · ${escapeHtml((source.retrieval_channels || ["dense"]).join("+"))}${source.aspect ? ` · aspect ${escapeHtml(source.aspect)}` : ""}
       </div>
       <div class="score-bar"><div class="score-fill" style="width: ${Math.max(6, Math.round((Number(source.score) || 0) / maxScore * 100))}%"></div></div>
       <div class="meta">${escapeHtml(source.heading_path || "")}</div>

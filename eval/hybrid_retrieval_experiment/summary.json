@@ -1,0 +1,96 @@
+{
+  "dataset": "C:\\Users\\Lenovo\\Desktop\\大模型官方课程-视频资料\\学习产出\\enterprise-rag-learning-project\\eval\\datasets\\rag_system_smoke_eval.jsonl",
+  "case_ids": [
+    "rag_compound_overview",
+    "chunking_not_fixed_window",
+    "rag_evaluation_reliability",
+    "embedding_bge_m3_role",
+    "reranking_role",
+    "query_planning_expansion",
+    "vector_db_chroma_role",
+    "enterprise_rag_retrieval"
+  ],
+  "top_k": 7,
+  "candidate_k": 16,
+  "collection_count": 938,
+  "variants": [
+    {
+      "name": "dense",
+      "retrieval_strategy": "dense",
+      "rerank_mode": "none",
+      "planned": false,
+      "cases": 8,
+      "category_pass_rate": 0.625,
+      "source_terms_pass_rate": 1.0,
+      "both_pass_rate": 0.625,
+      "category_mrr": 0.5729,
+      "avg_source_term_recall": 0.7375,
+      "avg_seconds": 0.3507
+    },
+    {
+      "name": "dense_lexical_rerank",
+      "retrieval_strategy": "dense",
+      "rerank_mode": "lexical",
+      "planned": false,
+      "cases": 8,
+      "category_pass_rate": 0.625,
+      "source_terms_pass_rate": 1.0,
+      "both_pass_rate": 0.625,
+      "category_mrr": 0.5938,
+      "avg_source_term_recall": 0.7375,
+      "avg_seconds": 0.3542
+    },
+    {
+      "name": "hybrid",
+      "retrieval_strategy": "hybrid",
+      "rerank_mode": "none",
+      "planned": false,
+      "cases": 8,
+      "category_pass_rate": 0.75,
+      "source_terms_pass_rate": 1.0,
+      "both_pass_rate": 0.75,
+      "category_mrr": 0.7083,
+      "avg_source_term_recall": 0.8375,
+      "avg_seconds": 0.3699
+    },
+    {
+      "name": "hybrid_lexical_rerank",
+      "retrieval_strategy": "hybrid",
+      "rerank_mode": "lexical",
+      "planned": false,
+      "cases": 8,
+      "category_pass_rate": 0.75,
+      "source_terms_pass_rate": 1.0,
+      "both_pass_rate": 0.75,
+      "category_mrr": 0.6875,
+      "avg_source_term_recall": 0.8375,
+      "avg_seconds": 0.3633
+    },
+    {
+      "name": "planned_dense_lexical_rerank",
+      "retrieval_strategy": "dense",
+      "rerank_mode": "lexical",
+      "planned": true,
+      "cases": 8,
+      "category_pass_rate": 1.0,
+      "source_terms_pass_rate": 1.0,
+      "both_pass_rate": 1.0,
+      "category_mrr": 0.875,
+      "avg_source_term_recall": 0.95,
+      "avg_seconds": 8.3104
+    },
+    {
+      "name": "planned_hybrid_lexical_rerank",
+      "retrieval_strategy": "hybrid",
+      "rerank_mode": "lexical",
+      "planned": true,
+      "cases": 8,
+      "category_pass_rate": 1.0,
+      "source_terms_pass_rate": 1.0,
+      "both_pass_rate": 1.0,
+      "category_mrr": 0.9375,
+      "avg_source_term_recall": 0.95,
+      "avg_seconds": 8.6587
+    }
+  ]
+}

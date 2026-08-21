@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import chromadb
 
+from src.bm25_retrieval import get_bm25_index
 from src.ollama_http import embed_query
 from src.query_planning import QueryPlan, plan_query
 from src.reranking import lexical_rerank
@@ -117,6 +119,8 @@ MIN_ASPECT_SOURCES: dict[str, int] = {
     "badcase_analysis": 2,
 }
 
+DEFAULT_CHUNKS_PATH = Path(__file__).resolve().parents[1] / "data" / "processed" / "llm_rag_docs" / "chunks.jsonl"
+
 
 @dataclass
 class RetrievedChunk:
@@ -131,6 +135,7 @@ class RetrievedChunk:
     rank: int
     rerank_score: float = 0.0
     rerank_reason: str = ""
+    retrieval_channels: list[str] = field(default_factory=list)
 
 
 def direct_retrieve(
@@ -156,6 +161,58 @@ def direct_retrieve(
     return rerank(query, candidates, top_k, rerank_mode)
 
 
+def bm25_retrieve(
+    query: str,
+    top_k: int = 5,
+    category: str | None = None,
+    chunks_path: Path = DEFAULT_CHUNKS_PATH,
+) -> list[RetrievedChunk]:
+    hits = get_bm25_index(chunks_path).search(query, top_k=top_k, category=category)
+    return [
+        RetrievedChunk(
+            chunk_id=hit.chunk_id,
+            document=hit.document,
+            metadata=hit.metadata,
+            distance=1.0 / (1.0 + hit.score),
+            score=hit.score,
+            source_query=query,
+            category_filter=category,
+            aspect=None,
+            rank=hit.rank,
+            retrieval_channels=["bm25"],
+        )
+        for hit in hits
+    ]
+
+
+def hybrid_retrieve(
+    collection: chromadb.Collection,
+    query: str,
+    embedding_model: str,
+    ollama_host: str,
+    top_k: int = 5,
+    candidate_k: int | None = None,
+    category: str | None = None,
+    rerank_mode: str = "none",
+    chunks_path: Path = DEFAULT_CHUNKS_PATH,
+) -> list[RetrievedChunk]:
+    """Fuse dense Chroma and sparse BM25 candidates with reciprocal-rank fusion."""
+    retrieval_k = max(top_k, candidate_k or top_k)
+    dense = direct_retrieve(
+        collection,
+        query,
+        embedding_model,
+        ollama_host,
+        top_k=retrieval_k,
+        candidate_k=retrieval_k,
+        category=category,
+        rerank_mode="none",
+    )
+    sparse = bm25_retrieve(query, top_k=retrieval_k, category=category, chunks_path=chunks_path)
+    fused = reciprocal_rank_fusion([dense, sparse])
+    return rerank(query, fused, top_k, rerank_mode)
+
+
 def planned_retrieve(
     collection: chromadb.Collection,
     query: str,
@@ -166,6 +223,8 @@ def planned_retrieve(
     max_categories: int = 2,
     manual_category: str | None = None,
     rerank_mode: str = "none",
+    retrieval_strategy: str = "dense",
+    chunks_path: Path = DEFAULT_CHUNKS_PATH,
 ) -> tuple[QueryPlan, list[RetrievedChunk]]:
     plan = plan_query(query, max_categories=max_categories)
     if manual_category:
@@ -184,7 +243,7 @@ def planned_retrieve(
         aspect_query = aspect.search_query or aspect.question
         aspect_runs: list[list[RetrievedChunk]] = []
         aspect_runs.append(
-            direct_retrieve(
+            retrieve_with_strategy(
                 collection,
                 aspect_query,
                 embedding_model,
@@ -192,11 +251,13 @@ def planned_retrieve(
                 top_k=candidate_k,
                 category=None,
                 rerank_mode="none",
+                retrieval_strategy=retrieval_strategy,
+                chunks_path=chunks_path,
             )
         )
         for category in aspect.categories[:8]:
             aspect_runs.append(
-                direct_retrieve(
+                retrieve_with_strategy(
                     collection,
                     aspect_query,
                     embedding_model,
@@ -204,6 +265,8 @@ def planned_retrieve(
                     top_k=max(3, candidate_k // 2),
                     category=category,
                     rerank_mode="none",
+                    retrieval_strategy=retrieval_strategy,
+                    chunks_path=chunks_path,
                 )
             )
         for run in aspect_runs:
@@ -213,7 +276,7 @@ def planned_retrieve(
 
     for sub_query in plan.sub_queries:
         retrieval_runs.append(
-            direct_retrieve(
+            retrieve_with_strategy(
                 collection,
                 sub_query,
                 embedding_model,
@@ -221,11 +284,13 @@ def planned_retrieve(
                 top_k=candidate_k,
                 category=None,
                 rerank_mode="none",
+                retrieval_strategy=retrieval_strategy,
+                chunks_path=chunks_path,
             )
         )
         for category in plan.category_filters:
             retrieval_runs.append(
-                direct_retrieve(
+                retrieve_with_strategy(
                     collection,
                     sub_query,
                     embedding_model,
@@ -233,6 +298,8 @@ def planned_retrieve(
                     top_k=candidate_k,
                     category=category,
                     rerank_mode="none",
+                    retrieval_strategy=retrieval_strategy,
+                    chunks_path=chunks_path,
                 )
             )
 
@@ -240,6 +307,44 @@ def planned_retrieve(
     ranked = rerank(query, fused, len(fused), rerank_mode)
     ranked = apply_plan_boosts(ranked, plan)
     return plan, select_with_plan_coverage(ranked, top_k, plan)
+
+
+def retrieve_with_strategy(
+    collection: chromadb.Collection,
+    query: str,
+    embedding_model: str,
+    ollama_host: str,
+    top_k: int,
+    candidate_k: int | None = None,
+    category: str | None = None,
+    rerank_mode: str = "none",
+    retrieval_strategy: str = "dense",
+    chunks_path: Path = DEFAULT_CHUNKS_PATH,
+) -> list[RetrievedChunk]:
+    if retrieval_strategy == "dense":
+        return direct_retrieve(
+            collection,
+            query,
+            embedding_model,
+            ollama_host,
+            top_k=top_k,
+            candidate_k=candidate_k,
+            category=category,
+            rerank_mode=rerank_mode,
+        )
+    if retrieval_strategy == "hybrid":
+        return hybrid_retrieve(
+            collection,
+            query,
+            embedding_model,
+            ollama_host,
+            top_k=top_k,
+            candidate_k=candidate_k,
+            category=category,
+            rerank_mode=rerank_mode,
+            chunks_path=chunks_path,
+        )
+    raise ValueError(f"Unsupported retrieval_strategy: {retrieval_strategy}")
 
 
 def rerank(query: str, candidates: list[RetrievedChunk], top_k: int, rerank_mode: str) -> list[RetrievedChunk]:
@@ -526,6 +631,7 @@ def unpack_results(results: dict[str, Any], query: str, category: str | None) ->
                 category_filter=category,
                 aspect=None,
                 rank=rank,
+                retrieval_channels=["dense"],
             )
         )
     return rows
@@ -539,12 +645,16 @@ def reciprocal_rank_fusion(runs: list[list[RetrievedChunk]], k: int = 60) -> lis
             scores[item.chunk_id] = scores.get(item.chunk_id, 0.0) + 1.0 / (k + rank)
             previous = fused.get(item.chunk_id)
             previous_aspect = previous.aspect if previous else None
+            merged_channels = sorted(set((previous.retrieval_channels if previous else []) + item.retrieval_channels))
             if item.chunk_id not in fused or item.distance < fused[item.chunk_id].distance:
                 if previous_aspect and not item.aspect:
                     item.aspect = previous_aspect
+                item.retrieval_channels = merged_channels
                 fused[item.chunk_id] = item
             elif item.aspect and not fused[item.chunk_id].aspect:
                 fused[item.chunk_id].aspect = item.aspect
+            if item.chunk_id in fused:
+                fused[item.chunk_id].retrieval_channels = merged_channels
 
     for chunk_id, item in fused.items():
         item.score = scores.get(chunk_id, 0.0)
