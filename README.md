@@ -16,6 +16,14 @@
 - `eval/rag_system_full_after_chroma_query_docs/summary.md`
 - `notes/34_component_scoped_planning_and_chroma_docs.md`
 
+## Demo 展示
+
+代表性问答案例见：
+
+- `docs/demo.md`
+
+Demo 覆盖复合问题拆解、非固定窗口 chunking、query rewrite/query expansion、Chroma metadata filter、企业级混合检索/重排，以及知识边界拒答。
+
 ## 核心能力
 
 - 资料来源可追踪：通过 `data/source_manifests/llm_rag_sources.csv` 维护高质量来源。
