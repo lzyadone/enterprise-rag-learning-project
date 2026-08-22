@@ -83,6 +83,7 @@ async function ask() {
     query,
     llm_provider: el("llmProvider").value,
     retrieval_mode: el("retrievalMode").value,
+    retrieval_strategy: el("retrievalStrategy").value,
     rerank_mode: el("rerankMode").value,
     top_k: Number(el("topK").value),
     candidate_k: Number(el("candidateK").value),
@@ -149,6 +150,7 @@ function renderEffectSummary(data) {
   const retrievedLong = data.memory?.long_term?.retrieved?.length || 0;
   const planCategories = data.plan?.category_filters?.length ? data.plan.category_filters.join(", ") : "none";
   const aspectCount = data.plan?.aspects?.length || 0;
+  const coverageLabel = aspectCount ? `${aspectCount} 个回答面` : data.plan ? "单一问题" : "直接检索";
   const auditClass = auditPass === null ? "" : auditPass ? "good" : "bad";
   const auditText = auditPass === null ? "未审计" : auditPass ? "可交付" : "需检查";
   const ruleText = rulePass === undefined ? "未运行规则" : rulePass ? "引用格式通过" : "引用格式失败";
@@ -159,7 +161,7 @@ function renderEffectSummary(data) {
       <div class="summary-card">
         <div class="summary-label">检索覆盖</div>
         <div class="summary-value">${sourceCount} 条来源</div>
-        <div class="summary-note">${aspectCount} 个回答面 · ${escapeHtml(planCategories)}</div>
+        <div class="summary-note">${coverageLabel} · ${escapeHtml(planCategories)}</div>
       </div>
       <div class="summary-card">
         <div class="summary-label">上下文组装</div>
@@ -195,9 +197,12 @@ function renderPlan(data) {
     </div>`,
     `<div class="kv">
       <b>mode</b><span>${escapeHtml(settings.retrieval_mode)}</span>
+      <b>channel</b><span>${escapeHtml(settings.retrieval_strategy || "dense")}</span>
       <b>effective query</b><span>${escapeHtml(data.effective_query)}</span>
       <b>provider</b><span>${escapeHtml(settings.llm_provider)}</span>
       <b>rerank</b><span>${escapeHtml(settings.rerank_mode)}</span>
+      ${settings.reranker ? `<b>reranker model</b><span>${escapeHtml(settings.reranker.model)}</span>` : ""}
+      ${settings.reranker ? `<b>reranker runtime</b><span>${escapeHtml(`${settings.reranker.backend} / ${settings.reranker.device}`)}</span>` : ""}
       <b>top_k</b><span>${settings.top_k}</span>
       <b>candidate_k</b><span>${settings.candidate_k}</span>
     </div>`,
@@ -232,7 +237,7 @@ function renderSources(sources) {
         <span class="badge">${escapeHtml(source.category || "")}</span>
       </div>
       <div class="meta">
-        score ${formatNum(source.score)} · distance ${formatNum(source.distance)}${source.aspect ? ` · aspect ${escapeHtml(source.aspect)}` : ""}
+        score ${formatNum(source.score)} · distance ${formatNum(source.distance)} · ${escapeHtml((source.retrieval_channels || ["dense"]).join("+"))}${source.aspect ? ` · aspect ${escapeHtml(source.aspect)}` : ""}
       </div>
       <div class="score-bar"><div class="score-fill" style="width: ${Math.max(6, Math.round((Number(source.score) || 0) / maxScore * 100))}%"></div></div>
       <div class="meta">${escapeHtml(source.heading_path || "")}</div>

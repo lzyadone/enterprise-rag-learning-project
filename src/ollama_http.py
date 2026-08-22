@@ -39,6 +39,14 @@ def embed_query(query: str, model: str, host: str) -> list[float]:
     return embed_texts([query], model=model, host=host)[0]
 
 
+def unload_embedding_model(model: str, host: str) -> None:
+    """Release an Ollama embedding model after a memory-sensitive offline phase."""
+    post_json(
+        f"{host.rstrip('/')}/api/embed",
+        {"model": model, "input": "", "keep_alive": 0},
+    )
+
+
 def generate(prompt: str, model: str, host: str, num_ctx: int = 8192, num_predict: int = 700) -> str:
     response = post_json(
         f"{host.rstrip('/')}/api/generate",

@@ -25,10 +25,11 @@ from src.answer_audit import DEFAULT_AUDIT_MODEL, audit_answer_with_deepseek, co
 from src.answer_repair import repair_answer_with_deepseek  # noqa: E402
 from src.context_assembly import assemble_context, build_answer_prompt  # noqa: E402
 from src.coverage_audit import audit_coverage_with_deepseek, deterministic_coverage_audit  # noqa: E402
+from src.cross_encoder_reranking import runtime_config as reranker_runtime_config  # noqa: E402
 from src.deepseek_client import DEFAULT_BASE_URL, DEFAULT_MODEL, chat_completion, get_deepseek_api_key  # noqa: E402
 from src.long_memory import DEFAULT_NAMESPACE, LongMemoryStore, format_long_memory_context  # noqa: E402
 from src.ollama_http import generate  # noqa: E402
-from src.retrieval import RetrievedChunk, direct_retrieve, planned_retrieve  # noqa: E402
+from src.retrieval import RetrievedChunk, planned_retrieve, retrieve_with_strategy  # noqa: E402
 
 
 STATIC_DIR = PROJECT_ROOT / "webapp" / "static"
@@ -134,6 +135,7 @@ class RAGRequestHandler(BaseHTTPRequestHandler):
                     "collection": STATE.collection_name,
                     "indexed_count": STATE.collection.count(),
                     "deepseek_key": bool(get_deepseek_api_key()),
+                    "reranker": reranker_runtime_config(),
                     "long_memory": STATE.long_memory.stats(DEFAULT_NAMESPACE),
                 }
             )
@@ -207,6 +209,7 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
     memory_namespace = str(payload.get("memory_namespace") or DEFAULT_NAMESPACE)
     llm_provider = str(payload.get("llm_provider") or ("deepseek" if get_deepseek_api_key() else "ollama"))
     retrieval_mode = str(payload.get("retrieval_mode") or "planned")
+    retrieval_strategy = str(payload.get("retrieval_strategy") or "dense")
     rerank_mode = str(payload.get("rerank_mode") or "lexical")
     embedding_model = str(payload.get("embedding_model") or "bge-m3")
     ollama_host = str(payload.get("ollama_host") or "http://127.0.0.1:11434")
@@ -214,6 +217,10 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
     candidate_k = int(payload.get("candidate_k") or 12)
     max_context_chars = int(payload.get("max_context_chars") or 9000)
     audit_answer = bool(payload.get("audit_answer", True))
+    if retrieval_mode not in {"direct", "planned"}:
+        raise ValueError("retrieval_mode must be direct or planned")
+    if retrieval_strategy not in {"dense", "hybrid"}:
+        raise ValueError("retrieval_strategy must be dense or hybrid")
 
     effective_query = build_effective_query(query, memory if use_memory else None)
     long_memory_hits = []
@@ -236,7 +243,7 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
         retrieved = []
     elif retrieval_mode == "direct":
         plan = None
-        retrieved = direct_retrieve(
+        retrieved = retrieve_with_strategy(
             STATE.collection,
             effective_query,
             embedding_model,
@@ -244,6 +251,7 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
             top_k=top_k,
             candidate_k=candidate_k,
             rerank_mode=rerank_mode,
+            retrieval_strategy=retrieval_strategy,
         )
     else:
         plan, retrieved = planned_retrieve(
@@ -254,6 +262,7 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
             top_k=top_k,
             candidate_k=candidate_k,
             rerank_mode=rerank_mode,
+            retrieval_strategy=retrieval_strategy,
         )
 
     short_memory_context = memory.context() if use_memory else ""
@@ -347,7 +356,9 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
         "settings": {
             "llm_provider": llm_provider,
             "retrieval_mode": retrieval_mode,
+            "retrieval_strategy": retrieval_strategy,
             "rerank_mode": rerank_mode,
+            "reranker": reranker_runtime_config() if rerank_mode == "cross_encoder" else None,
             "top_k": top_k,
             "candidate_k": candidate_k,
             "max_context_chars": max_context_chars,
@@ -577,6 +588,7 @@ def chunks_to_rows(chunks: list[RetrievedChunk]) -> list[dict[str, Any]]:
                 "score": chunk.score,
                 "rerank_score": chunk.rerank_score,
                 "rerank_reason": chunk.rerank_reason,
+                "retrieval_channels": chunk.retrieval_channels,
                 "source_query": chunk.source_query,
                 "category_filter": chunk.category_filter,
                 "aspect": chunk.aspect,
