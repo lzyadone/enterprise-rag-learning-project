@@ -65,6 +65,23 @@ def load_candidate_pools(path: Path) -> list[dict[str, Any]]:
     return pools
 
 
+def load_complete_qrels(
+    path: Path,
+    candidate_pools: list[dict[str, Any]],
+) -> dict[str, dict[str, int]]:
+    """Load qrels and require a judgment for every fixed-pool candidate."""
+    store = JudgmentStore(path, candidate_pools)
+    progress = store.progress()
+    if progress["labeled"] != progress["total"]:
+        raise ValueError(
+            f"qrels are incomplete: {progress['labeled']}/{progress['total']} judgments"
+        )
+    grades: dict[str, dict[str, int]] = {}
+    for row in store.rows():
+        grades.setdefault(row["query_id"], {})[row["chunk_id"]] = int(row["relevance"])
+    return grades
+
+
 class JudgmentStore:
     """Thread-safe JSONL store constrained to a fixed set of query/chunk pairs."""
 

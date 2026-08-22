@@ -1,0 +1,109 @@
+{
+  "dataset": "eval\\datasets\\rag_system_smoke_eval.jsonl",
+  "case_ids": [
+    "rag_compound_overview",
+    "chunking_not_fixed_window",
+    "rag_evaluation_reliability",
+    "embedding_bge_m3_role",
+    "reranking_role",
+    "query_planning_expansion",
+    "vector_db_chroma_role",
+    "enterprise_rag_retrieval"
+  ],
+  "collection_count": 938,
+  "retrieval_strategy": "planned-hybrid",
+  "top_k": 7,
+  "candidate_k": 16,
+  "relevance_source": "human_qrels",
+  "qrels": "eval\\benchmarks\\rag_retrieval_v1\\qrels.jsonl",
+  "relevant_threshold": 2,
+  "rerankers": {
+    "cross_encoder_multilingual": {
+      "model": "BAAI/bge-reranker-v2-m3",
+      "backend": "transformers",
+      "device": "cuda:0",
+      "dtype": "float16",
+      "cache_dir": "data\\runtime\\huggingface",
+      "threads": null,
+      "batch_size": 2,
+      "max_length": 512
+    },
+    "cross_encoder_fused": {
+      "model": "BAAI/bge-reranker-v2-m3",
+      "backend": "transformers",
+      "device": "cuda:0",
+      "dtype": "float16",
+      "cache_dir": "data\\runtime\\huggingface",
+      "threads": null,
+      "batch_size": 2,
+      "max_length": 512
+    }
+  },
+  "model_warmup_seconds": {
+    "cross_encoder_multilingual": 66.1274,
+    "cross_encoder_fused": 0.058
+  },
+  "modes": [
+    {
+      "mode": "none",
+      "cases": 8,
+      "both_pass_rate": 1.0,
+      "avg_ndcg_at_k": 0.7498,
+      "avg_recall_at_k": 0.5036,
+      "avg_precision_at_k": 0.8393,
+      "hit_rate_at_k": 1.0,
+      "mrr": 0.875,
+      "category_mrr": 0.9375,
+      "avg_source_term_recall": 0.95,
+      "avg_top1_relevance_grade": 2.5,
+      "avg_unique_categories": 3.375,
+      "avg_rerank_seconds": 0.0055
+    },
+    {
+      "mode": "lexical",
+      "cases": 8,
+      "both_pass_rate": 1.0,
+      "avg_ndcg_at_k": 0.7582,
+      "avg_recall_at_k": 0.5036,
+      "avg_precision_at_k": 0.8393,
+      "hit_rate_at_k": 1.0,
+      "mrr": 1.0,
+      "category_mrr": 0.9375,
+      "avg_source_term_recall": 0.95,
+      "avg_top1_relevance_grade": 2.75,
+      "avg_unique_categories": 3.375,
+      "avg_rerank_seconds": 0.0142
+    },
+    {
+      "mode": "cross_encoder_multilingual",
+      "cases": 8,
+      "both_pass_rate": 1.0,
+      "avg_ndcg_at_k": 0.7345,
+      "avg_recall_at_k": 0.4749,
+      "avg_precision_at_k": 0.7857,
+      "hit_rate_at_k": 1.0,
+      "mrr": 0.9375,
+      "category_mrr": 0.9375,
+      "avg_source_term_recall": 0.95,
+      "avg_top1_relevance_grade": 2.625,
+      "avg_unique_categories": 3.5,
+      "avg_rerank_seconds": 5.1727
+    },
+    {
+      "mode": "cross_encoder_fused",
+      "cases": 8,
+      "both_pass_rate": 1.0,
+      "avg_ndcg_at_k": 0.7467,
+      "avg_recall_at_k": 0.5067,
+      "avg_precision_at_k": 0.8393,
+      "hit_rate_at_k": 1.0,
+      "mrr": 0.9375,
+      "category_mrr": 0.875,
+      "avg_source_term_recall": 0.95,
+      "avg_top1_relevance_grade": 2.375,
+      "avg_unique_categories": 3.5,
+      "avg_rerank_seconds": 5.2433
+    }
+  ],
+  "metric_note": "Metrics use complete human qrels within each fixed candidate pool."
+}

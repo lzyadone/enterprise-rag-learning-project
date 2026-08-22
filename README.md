@@ -215,6 +215,25 @@ python experiments\25_retrieval_labeling\audit_judgments.py
 
 最终精确一致率为 `44.53%`，相差不超过一级的一致率为 `97.66%`。3 条严重分歧均已人工复核并记录理由，未决复核项为 `0`。完整模型判断、复核队列和汇总分别保存在 `llm_audit.jsonl`、`review_queue.jsonl` 和 `audit_summary.json`，不会用模型分数覆盖人工 qrels。
 
+用人工 qrels 重跑固定候选池上的排序评测：
+
+```powershell
+python experiments\24_cross_encoder_rerank_eval\evaluate_rerankers.py `
+  --candidate-pools eval\planned_reranker_full\candidate_pools.jsonl `
+  --qrels eval\benchmarks\rag_retrieval_v1\qrels.jsonl `
+  --retrieval-mode planned `
+  --output-dir eval\human_qrels_reranker_full
+```
+
+| mode | Recall@7 | Precision@7 | MRR | nDCG@7 | 重排耗时 |
+|---|---:|---:|---:|---:|---:|
+| none | 0.504 | 0.839 | 0.875 | 0.750 | 0.01s |
+| lexical | 0.504 | 0.839 | **1.000** | **0.758** | 0.01s |
+| bge-reranker-v2-m3 | 0.475 | 0.786 | 0.938 | 0.735 | 5.17s |
+| retrieval/model fusion | **0.507** | 0.839 | 0.938 | 0.747 | 5.24s |
+
+当前继续使用 `lexical` 作为默认重排器。cross-encoder 在部分问题上改善、在另一些问题上明显退化，不适合全局强制启用。这里的 Recall 只衡量固定候选池内的排序，不代表对全部 938 个 chunk 的端到端召回。
+
 ## 学习记录
 
 建议按顺序阅读这些阶段记录：
@@ -229,6 +248,7 @@ python experiments\25_retrieval_labeling\audit_judgments.py
 - `notes/34_component_scoped_planning_and_chroma_docs.md`
 - `notes/35_hybrid_retrieval_and_rrf.md`
 - `notes/36_cross_encoder_reranker.md`
+- `notes/37_human_qrels_reranker_evaluation.md`
 
 ## 适合作品集展示的点
 
@@ -242,6 +262,6 @@ python experiments\25_retrieval_labeling\audit_judgments.py
 - 补充 `environment.yml`，让 conda 环境也能一键创建。
 - 给 Web 页面增加更清晰的“答案/来源/审计”展示。
 - 增加更多真实业务数据集，验证跨领域泛化。
-- 用人工相关性标注集重算各检索与重排策略的 Recall、MRR 和 nDCG，再决定是否按问题类型自适应启用 cross-encoder。
+- 构建 dense、BM25、hybrid、direct 和 planned retrieval 的候选并集，只补标新增样本，再评估端到端候选召回。
 - 增加候选与重排结果缓存，降低 planned retrieval 的在线延迟。
 - 增加 GitHub Actions 或本地一键评测脚本。

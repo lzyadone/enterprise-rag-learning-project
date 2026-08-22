@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.retrieval_judgments import JudgmentStore, load_candidate_pools
+from src.retrieval_judgments import JudgmentStore, load_candidate_pools, load_complete_qrels
 
 
 class RetrievalJudgmentsTest(unittest.TestCase):
@@ -57,6 +57,21 @@ class RetrievalJudgmentsTest(unittest.TestCase):
         self.assertTrue(store.delete("q1", "doc::2"))
         self.assertFalse(store.delete("q1", "doc::2"))
         self.assertEqual([], JudgmentStore(self.qrels_path, self.pools).rows())
+
+    def test_complete_qrels_returns_grades_by_query(self) -> None:
+        store = JudgmentStore(self.qrels_path, self.pools)
+        store.upsert("q1", "doc::1", 3)
+        store.upsert("q1", "doc::2", 0)
+
+        grades = load_complete_qrels(self.qrels_path, self.pools)
+
+        self.assertEqual({"doc::1": 3, "doc::2": 0}, grades["q1"])
+
+    def test_incomplete_qrels_is_rejected(self) -> None:
+        JudgmentStore(self.qrels_path, self.pools).upsert("q1", "doc::1", 3)
+
+        with self.assertRaisesRegex(ValueError, "incomplete"):
+            load_complete_qrels(self.qrels_path, self.pools)
 
 
 if __name__ == "__main__":
