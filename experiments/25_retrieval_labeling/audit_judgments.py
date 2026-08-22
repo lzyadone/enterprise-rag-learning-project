@@ -12,12 +12,12 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.deepseek_client import DEFAULT_MODEL, chat_completion  # noqa: E402
+from src.deepseek_client import DEFAULT_MODEL  # noqa: E402
 from src.relevance_audit import (  # noqa: E402
     agreement_summary,
-    parse_llm_judgments,
     refresh_human_judgments,
 )
+from src.relevance_judge import judge_pool  # noqa: E402
 from src.retrieval_judgments import JudgmentStore, load_candidate_pools  # noqa: E402
 
 
@@ -26,20 +26,6 @@ DEFAULT_QRELS = PROJECT_ROOT / "eval" / "benchmarks" / "rag_retrieval_v1" / "qre
 DEFAULT_OUTPUT = PROJECT_ROOT / "eval" / "benchmarks" / "rag_retrieval_v1" / "llm_audit.jsonl"
 DEFAULT_REVIEW_QUEUE = PROJECT_ROOT / "eval" / "benchmarks" / "rag_retrieval_v1" / "review_queue.jsonl"
 DEFAULT_SUMMARY = PROJECT_ROOT / "eval" / "benchmarks" / "rag_retrieval_v1" / "audit_summary.json"
-
-
-SYSTEM_PROMPT = """你是独立的信息检索相关性评测员。请判断每个候选知识块对给定问题的证据价值。
-
-统一评分标准：
-3 = 直接证据：知识块直接回答问题，或直接回答复合问题中的至少一个明确子问题。
-2 = 辅助证据：包含形成答案所需的重要背景、方法或解释，但自身不是直接答案。
-1 = 仅主题相关：主题相近，但缺少回答当前问题所需的具体证据。
-0 = 无关或误导：不能帮助回答当前问题，或可能把回答引向错误方向。
-
-必须阅读正文后判断，不得只根据标题、分类或专业术语评分。不要假设候选的排列顺序代表质量。
-只返回 JSON 对象，格式为：
-{"judgments":[{"chunk_id":"...","relevance":0,"reason":"不超过50个中文字符的依据"}]}
-必须为每个输入 chunk_id 返回且只返回一次结果。"""
 
 
 def parse_args() -> argparse.Namespace:
@@ -77,7 +63,11 @@ def main() -> None:
             print(f"[{index}/{len(pools)}] {query_id}: reused existing audit", flush=True)
             continue
 
-        model_rows = judge_pool(pool, model=args.model, max_document_chars=args.max_document_chars)
+        model_rows = judge_pool(
+            pool,
+            model=args.model,
+            max_document_chars=args.max_document_chars,
+        )
         for model_row in model_rows:
             chunk_id = model_row["chunk_id"]
             human_row = human[(query_id, chunk_id)]
@@ -116,50 +106,6 @@ def main() -> None:
     print(f"audit: {portable_path(args.output)}")
     print(f"review queue: {portable_path(args.review_queue)}")
     print(f"summary: {portable_path(args.summary)}")
-
-
-def judge_pool(pool: dict[str, Any], model: str, max_document_chars: int) -> list[dict[str, Any]]:
-    candidates = []
-    chunk_ids = []
-    for candidate in pool["candidates"]:
-        chunk_id = str(candidate["chunk_id"])
-        chunk_ids.append(chunk_id)
-        metadata = candidate.get("metadata") or {}
-        document = str(candidate.get("document") or "")
-        if len(document) > max_document_chars:
-            document = document[:max_document_chars] + "\n[正文已截断]"
-        candidates.append(
-            {
-                "chunk_id": chunk_id,
-                "title": metadata.get("title") or "",
-                "heading": metadata.get("heading_path") or "",
-                "document": document,
-            }
-        )
-    user_payload = {
-        "question": pool["question"],
-        "candidates": candidates,
-    }
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
-    ]
-    last_error: ValueError | None = None
-    for _ in range(3):
-        content = chat_completion(
-            messages=messages,
-            model=model,
-            temperature=0.0,
-            max_tokens=3600,
-            timeout=300,
-            response_format={"type": "json_object"},
-            thinking=False,
-        )
-        try:
-            return parse_llm_judgments(content, chunk_ids)
-        except ValueError as exc:
-            last_error = exc
-    raise RuntimeError(f"LLM audit returned invalid JSON after 3 attempts: {last_error}")
 
 
 def load_existing(path: Path) -> dict[tuple[str, str], dict[str, Any]]:

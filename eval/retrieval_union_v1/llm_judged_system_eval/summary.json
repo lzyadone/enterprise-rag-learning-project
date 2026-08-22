@@ -1,0 +1,75 @@
+{
+  "qrels": "eval\\benchmarks\\rag_retrieval_union_v1\\qrels_llm.jsonl",
+  "qrels_type": "complete_blind_llm_judgments",
+  "cases": 8,
+  "pooled_query_chunk_pairs": 224,
+  "relevant_threshold": 2,
+  "systems": [
+    {
+      "system": "direct_dense",
+      "cases": 8,
+      "avg_recall_at_5": 0.2134,
+      "avg_precision_at_5": 0.575,
+      "avg_recall_at_10": 0.4341,
+      "avg_precision_at_10": 0.575,
+      "mrr_at_10": 0.6979,
+      "avg_ndcg_at_10": 0.5192,
+      "avg_seconds": 3.9927,
+      "median_seconds": 1.0293,
+      "max_seconds": 24.4978
+    },
+    {
+      "system": "direct_bm25",
+      "cases": 8,
+      "avg_recall_at_5": 0.2395,
+      "avg_precision_at_5": 0.6,
+      "avg_recall_at_10": 0.4091,
+      "avg_precision_at_10": 0.525,
+      "mrr_at_10": 0.9375,
+      "avg_ndcg_at_10": 0.5847,
+      "avg_seconds": 0.0961,
+      "median_seconds": 0.0629,
+      "max_seconds": 0.3842
+    },
+    {
+      "system": "direct_hybrid",
+      "cases": 8,
+      "avg_recall_at_5": 0.2574,
+      "avg_precision_at_5": 0.65,
+      "avg_recall_at_10": 0.4082,
+      "avg_precision_at_10": 0.55,
+      "mrr_at_10": 1.0,
+      "avg_ndcg_at_10": 0.58,
+      "avg_seconds": 2.2214,
+      "median_seconds": 2.4108,
+      "max_seconds": 2.6202
+    },
+    {
+      "system": "planned_dense",
+      "cases": 8,
+      "avg_recall_at_5": 0.2188,
+      "avg_precision_at_5": 0.575,
+      "avg_recall_at_10": 0.4633,
+      "avg_precision_at_10": 0.6,
+      "mrr_at_10": 0.6875,
+      "avg_ndcg_at_10": 0.5466,
+      "avg_seconds": 24.7369,
+      "median_seconds": 22.1788,
+      "max_seconds": 45.8738
+    },
+    {
+      "system": "planned_hybrid",
+      "cases": 8,
+      "avg_recall_at_5": 0.2513,
+      "avg_precision_at_5": 0.65,
+      "avg_recall_at_10": 0.461,
+      "avg_precision_at_10": 0.6,
+      "mrr_at_10": 0.8542,
+      "avg_ndcg_at_10": 0.6202,
+      "avg_seconds": 25.1361,
+      "median_seconds": 21.8633,
+      "max_seconds": 45.7561
+    }
+  ],
+  "metric_boundary": "Metrics are computed against a depth-10 union pool, not exhaustive judgments over all collection chunks. LLM labels are consistent across all 224 pairs but are not a substitute for independent human judgments."
+}

@@ -250,6 +250,25 @@ python experiments\25_retrieval_labeling\server.py `
 
 打开 `http://127.0.0.1:8770` 后，页面会自动跳到每题第一条未标注候选。
 
+如果不进行新增人工标注，可以生成独立的完整 LLM qrels。该命令不会覆盖人工 qrels：
+
+```powershell
+python experiments\26_retrieval_pooling\label_union_with_llm.py --rejudge-all
+python experiments\26_retrieval_pooling\evaluate_candidate_generators.py
+```
+
+模型在全部 224 条随机盲标候选上重新判断，与已有 128 条人工标签相差不超过一级的比例为 `96.09%`，严重分歧为 `3.91%`。
+
+| system | Recall@5 | Recall@10 | MRR@10 | nDCG@10 | 中位耗时 |
+|---|---:|---:|---:|---:|---:|
+| direct_dense | 0.213 | 0.434 | 0.698 | 0.519 | 1.03s |
+| direct_bm25 | 0.239 | 0.409 | 0.938 | 0.585 | **0.06s** |
+| direct_hybrid | **0.257** | 0.408 | **1.000** | 0.580 | 2.41s |
+| planned_dense | 0.219 | **0.463** | 0.688 | 0.547 | 22.18s |
+| planned_hybrid | 0.251 | 0.461 | 0.854 | **0.620** | 21.86s |
+
+当前候选生成默认建议调整为 `direct_hybrid`，继续接 `lexical` 重排；复杂问题保留 `planned_hybrid` 实验路径。planning 能改善更深位置的召回，但当前约 22 秒中位耗时不适合全局启用。
+
 ## 学习记录
 
 建议按顺序阅读这些阶段记录：
@@ -266,6 +285,7 @@ python experiments\25_retrieval_labeling\server.py `
 - `notes/36_cross_encoder_reranker.md`
 - `notes/37_human_qrels_reranker_evaluation.md`
 - `notes/38_retrieval_union_pool.md`
+- `notes/39_llm_judged_candidate_generator_eval.md`
 
 ## 适合作品集展示的点
 
@@ -279,6 +299,7 @@ python experiments\25_retrieval_labeling\server.py `
 - 补充 `environment.yml`，让 conda 环境也能一键创建。
 - 给 Web 页面增加更清晰的“答案/来源/审计”展示。
 - 增加更多真实业务数据集，验证跨领域泛化。
-- 构建 dense、BM25、hybrid、direct 和 planned retrieval 的候选并集，只补标新增样本，再评估端到端候选召回。
+- 扩充 union benchmark 的 query 数量，并对模型严重分歧样本做独立人工复核。
+- 并行执行 planned retrieval 子查询并缓存 query embedding，降低约 22 秒的中位延迟。
 - 增加候选与重排结果缓存，降低 planned retrieval 的在线延迟。
 - 增加 GitHub Actions 或本地一键评测脚本。

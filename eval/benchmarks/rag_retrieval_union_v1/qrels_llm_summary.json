@@ -1,0 +1,21 @@
+{
+  "model": "deepseek-v4-flash",
+  "total": 224,
+  "judging_mode": "full_shuffled_union",
+  "label_distribution": {
+    "0": 33,
+    "1": 78,
+    "2": 84,
+    "3": 29
+  },
+  "human_overlap_audit": {
+    "total": 128,
+    "exact_agreement": 63,
+    "exact_agreement_rate": 0.4922,
+    "within_one": 123,
+    "within_one_rate": 0.9609,
+    "severe_disagreements": 5,
+    "severe_disagreement_rate": 0.0391
+  },
+  "provenance": "All 224 labels were judged in the deterministically shuffled union pool with retrieval ranks, scores, channels, and plans hidden. Human qrels remain separate."
+}

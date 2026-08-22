@@ -21,5 +21,11 @@ The relevance scale remains:
 - `1`: topically related but insufficient
 - `0`: irrelevant or misleading
 
-The initial qrels inherit all 128 judgments from `rag_retrieval_v1`. Only newly
-pooled query/chunk pairs require additional human review.
+`qrels.jsonl` inherits 128 human judgments from `rag_retrieval_v1` and remains
+partial. `qrels_llm.jsonl` is a separate complete 224-pair benchmark produced by
+`deepseek-v4-flash`; it does not overwrite or claim to extend the human qrels.
+All model labels were regenerated from the shuffled union pool in batches of 10.
+
+On the 128-pair human overlap, the model achieves 49.22% exact agreement,
+96.09% within-one agreement, and 3.91% severe disagreement. Use the complete
+LLM qrels for comparative experiments, not as a human gold-standard claim.
