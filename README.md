@@ -234,6 +234,22 @@ python experiments\24_cross_encoder_rerank_eval\evaluate_rerankers.py `
 
 当前继续使用 `lexical` 作为默认重排器。cross-encoder 在部分问题上改善、在另一些问题上明显退化，不适合全局强制启用。这里的 Recall 只衡量固定候选池内的排序，不代表对全部 938 个 chunk 的端到端召回。
 
+生成跨检索系统的盲标候选并集：
+
+```powershell
+python experiments\26_retrieval_pooling\build_union_pool.py
+```
+
+该实验合并 `direct_dense / direct_bm25 / direct_hybrid / planned_dense / planned_hybrid` 的 top 10，按 query/chunk 去重并隐藏系统、分数和原始排名。最终得到 224 对候选，继承已有 128 条人工标签，只需补标 96 条：
+
+```powershell
+python experiments\25_retrieval_labeling\server.py `
+  --candidate-pools eval\retrieval_union_v1\candidate_pools.jsonl `
+  --qrels eval\benchmarks\rag_retrieval_union_v1\qrels.jsonl
+```
+
+打开 `http://127.0.0.1:8770` 后，页面会自动跳到每题第一条未标注候选。
+
 ## 学习记录
 
 建议按顺序阅读这些阶段记录：
@@ -249,6 +265,7 @@ python experiments\24_cross_encoder_rerank_eval\evaluate_rerankers.py `
 - `notes/35_hybrid_retrieval_and_rrf.md`
 - `notes/36_cross_encoder_reranker.md`
 - `notes/37_human_qrels_reranker_evaluation.md`
+- `notes/38_retrieval_union_pool.md`
 
 ## 适合作品集展示的点
 

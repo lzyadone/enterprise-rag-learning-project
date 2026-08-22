@@ -1,0 +1,36 @@
+{
+  "dataset": "eval\\datasets\\rag_system_smoke_eval.jsonl",
+  "collection": "llm_rag_docs",
+  "pool_depth_per_system": 10,
+  "systems": [
+    "direct_dense",
+    "direct_bm25",
+    "direct_hybrid",
+    "planned_dense",
+    "planned_hybrid"
+  ],
+  "cases": 8,
+  "pool": {
+    "total_query_chunk_pairs": 224,
+    "min_candidates_per_query": 23,
+    "max_candidates_per_query": 35,
+    "avg_candidates_per_query": 28,
+    "system_unique_contributions": {
+      "direct_dense": 22,
+      "direct_bm25": 26,
+      "direct_hybrid": 0,
+      "planned_dense": 16,
+      "planned_hybrid": 13
+    },
+    "legacy_judged_not_in_current_top_depth": 22
+  },
+  "judgments": {
+    "inherited": 128,
+    "total_required": 224,
+    "remaining": 96,
+    "completion_rate": 0.5714
+  },
+  "candidate_pools": "eval\\retrieval_union_v1\\candidate_pools.jsonl",
+  "manifest": "eval\\retrieval_union_v1\\pool_manifest.jsonl",
+  "qrels": "eval\\benchmarks\\rag_retrieval_union_v1\\qrels.jsonl"
+}
