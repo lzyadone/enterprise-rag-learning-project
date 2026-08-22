@@ -199,6 +199,14 @@ python experiments\24_cross_encoder_rerank_eval\evaluate_rerankers.py --retrieva
 
 模型在 embedding、query planning 和 vector DB 问题上改善排序，但在 chunking、reranking 和企业复合检索问题上退化。当前默认继续使用 `planned + hybrid + lexical`；Web 中的多语种语义重排保留为实验选项。nDCG 使用固定候选池内的自动标签，不等同于完整人工相关性标注。
 
+人工检索相关性标注：
+
+```powershell
+python experiments\25_retrieval_labeling\server.py
+```
+
+打开 `http://127.0.0.1:8770`，逐条阅读问题和候选知识块，并按 `0`（无关）到 `3`（直接证据）评分。工具从可再生成的 `candidate_pools.jsonl` 读取候选，把人工判断原子写入 `eval/benchmarks/rag_retrieval_v1/qrels.jsonl`。人工标签独立于分类、关键词、检索分数和重排模型，后续用于计算可信的 Recall、MRR 和 nDCG。
+
 ## 学习记录
 
 建议按顺序阅读这些阶段记录：
