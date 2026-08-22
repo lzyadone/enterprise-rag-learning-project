@@ -1,0 +1,23 @@
+{
+  "total": 128,
+  "exact_agreement": 57,
+  "exact_agreement_rate": 0.4453,
+  "within_one": 125,
+  "within_one_rate": 0.9766,
+  "severe_disagreements": 3,
+  "severe_disagreement_rate": 0.0234,
+  "adjudicated_severe_disagreements": 3,
+  "open_review_items": 0,
+  "human_label_distribution": {
+    "0": 7,
+    "1": 27,
+    "2": 47,
+    "3": 47
+  },
+  "llm_label_distribution": {
+    "0": 13,
+    "1": 49,
+    "2": 53,
+    "3": 13
+  }
+}

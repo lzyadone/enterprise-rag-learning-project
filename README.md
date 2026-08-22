@@ -207,6 +207,14 @@ python experiments\25_retrieval_labeling\server.py
 
 打开 `http://127.0.0.1:8770`，逐条阅读问题和候选知识块，并按 `0`（无关）到 `3`（直接证据）评分。工具从可再生成的 `candidate_pools.jsonl` 读取候选，把人工判断原子写入 `eval/benchmarks/rag_retrieval_v1/qrels.jsonl`。人工标签独立于分类、关键词、检索分数和重排模型，后续用于计算可信的 Recall、MRR 和 nDCG。
 
+完成 128 条人工标注后，使用未读取人工分数的 DeepSeek 独立盲审：
+
+```powershell
+python experiments\25_retrieval_labeling\audit_judgments.py
+```
+
+最终精确一致率为 `44.53%`，相差不超过一级的一致率为 `97.66%`。3 条严重分歧均已人工复核并记录理由，未决复核项为 `0`。完整模型判断、复核队列和汇总分别保存在 `llm_audit.jsonl`、`review_queue.jsonl` 和 `audit_summary.json`，不会用模型分数覆盖人工 qrels。
+
 ## 学习记录
 
 建议按顺序阅读这些阶段记录：
@@ -234,6 +242,6 @@ python experiments\25_retrieval_labeling\server.py
 - 补充 `environment.yml`，让 conda 环境也能一键创建。
 - 给 Web 页面增加更清晰的“答案/来源/审计”展示。
 - 增加更多真实业务数据集，验证跨领域泛化。
-- 建立人工相关性标注集，再决定是否按问题类型自适应启用 cross-encoder。
+- 用人工相关性标注集重算各检索与重排策略的 Recall、MRR 和 nDCG，再决定是否按问题类型自适应启用 cross-encoder。
 - 增加候选与重排结果缓存，降低 planned retrieval 的在线延迟。
 - 增加 GitHub Actions 或本地一键评测脚本。

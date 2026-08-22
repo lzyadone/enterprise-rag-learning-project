@@ -18,3 +18,18 @@ the stable `query_id` and `chunk_id` pair.
 Do not use category names, lexical overlap, retrieval rank, or model scores as
 the final label. Read the candidate text and judge whether it provides evidence
 for the question.
+
+## Independent audit
+
+After human labeling is complete, run a blind DeepSeek audit without sending
+the human grades to the model:
+
+```powershell
+python experiments\25_retrieval_labeling\audit_judgments.py
+```
+
+`llm_audit.jsonl` preserves model judgments and differences,
+`review_queue.jsonl` contains only unresolved severe disagreements, and
+`audit_summary.json` records aggregate agreement. A qrels note beginning with
+`复核：` marks a severe disagreement as human-adjudicated without hiding the
+original model disagreement.
