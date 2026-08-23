@@ -1,0 +1,20 @@
+{"id":"holdout2_loader_interface","question":"LangChain 文档加载器的统一接口通常如何把外部数据转换为可供后续 RAG 使用的 Document？","stratum":"focused","topic":"document loading"}
+{"id":"holdout2_collection_metadata","question":"Chroma 中 collection metadata 与每条记录的 metadata 分别描述什么？","stratum":"focused","topic":"vector db"}
+{"id":"holdout2_embedding_function","question":"Chroma collection 的 embedding function 在写入和查询时分别承担什么职责？","stratum":"focused","topic":"vector db"}
+{"id":"holdout2_index_types","question":"LlamaIndex 的 Summary Index 与 Vector Store Index 在组织和检索节点时有什么核心区别？","stratum":"focused","topic":"indexing"}
+{"id":"holdout2_ingestion_cache","question":"LlamaIndex IngestionPipeline 的缓存解决什么问题，什么时候需要清理缓存？","stratum":"focused","topic":"ingestion"}
+{"id":"holdout2_self_query","question":"Self-query retrieval 如何把自然语言问题中的语义内容和 metadata 条件分开处理？","stratum":"focused","topic":"retrieval"}
+{"id":"holdout2_citation_recall","question":"ALCE 的 citation recall 指标检查什么，漏引一条需要证据的声明会怎样影响它？","stratum":"focused","topic":"evaluation"}
+{"id":"holdout2_contextual_recall","question":"RAG 评测中的 contextual recall 衡量检索上下文覆盖了参考答案中的哪些信息？","stratum":"focused","topic":"evaluation"}
+{"id":"holdout2_sbert_efficiency","question":"Sentence-BERT 为什么比逐对运行 cross-encoder 更适合大规模语义检索？","stratum":"focused","topic":"embedding"}
+{"id":"holdout2_postprocessors","question":"LlamaIndex node postprocessor 位于查询流程的什么位置，可以对已检索节点做哪些处理？","stratum":"focused","topic":"reranking"}
+{"id":"holdout2_multisource_ingestion","question":"同时接入 PDF、网页和企业协作工具时，文档加载、格式归一化与来源 metadata 应如何设计，才能让最终答案可追溯？","stratum":"compound","topic":"document loading and ingestion"}
+{"id":"holdout2_idempotent_updates","question":"如何利用 ingestion 缓存、稳定文档 ID 和 vector store 写入策略，使重复导入与增量更新保持幂等？","stratum":"compound","topic":"ingestion and index maintenance"}
+{"id":"holdout2_query_pipeline","question":"一个问题从 QueryEngine 进入后，retriever、node postprocessor 和 response synthesizer 应如何衔接，各自负责什么？","stratum":"compound","topic":"querying pipeline"}
+{"id":"holdout2_citation_precision_recall","question":"答案中的每个引用都支持相邻陈述，但部分事实没有引用时，citation precision 与 citation recall 会分别表现怎样？","stratum":"compound","topic":"citation evaluation"}
+{"id":"holdout2_metric_diagnosis","question":"contextual recall 高、contextual precision 低且 faithfulness 低，分别暴露了检索和生成链路中的什么问题？","stratum":"compound","topic":"evaluation diagnosis"}
+{"id":"holdout2_collection_lifecycle","question":"企业为不同知识域管理多个 Chroma collection 时，创建、获取、修改和删除操作应如何分工，collection metadata 又应记录哪些集合级信息？","stratum":"compound","topic":"vector database lifecycle"}
+{"id":"holdout2_self_query_boundary","question":"企业知识库既要按部门和日期精确过滤，又要理解用户的语义问题，self-query、metadata filter 与向量检索应如何配合？","stratum":"compound","topic":"filtered retrieval"}
+{"id":"holdout2_index_choice","question":"面对需要顺序总结整份文档和需要从海量段落中定位事实的两类任务，应如何选择 Summary Index 与 Vector Store Index？","stratum":"compound","topic":"index selection"}
+{"id":"holdout2_sbert_colbert_pipeline","question":"为什么可以先用 Sentence-BERT 类双塔向量召回，再用 ColBERT 类 late interaction 重排？这种两阶段设计交换了什么？","stratum":"compound","topic":"retrieval and reranking"}
+{"id":"holdout2_failure_localization","question":"当知识库含有答案但最终回答仍缺少关键事实时，如何区分加载遗漏、切分破坏、召回失败、排序靠后与生成未利用上下文？","stratum":"compound","topic":"failure diagnosis"}

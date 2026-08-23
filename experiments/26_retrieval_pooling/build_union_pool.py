@@ -46,6 +46,7 @@ SYSTEMS = [
     "planned_dense",
     "planned_hybrid",
 ]
+AVAILABLE_SYSTEMS = [*SYSTEMS, "planned_v2_hybrid"]
 
 
 def parse_args() -> argparse.Namespace:
@@ -60,7 +61,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--systems",
         nargs="+",
-        choices=SYSTEMS,
+        choices=AVAILABLE_SYSTEMS,
         default=SYSTEMS,
         help="Candidate generators to include in the union pool.",
     )
@@ -221,6 +222,20 @@ def run_system(
             retrieval_strategy=strategy,
             chunks_path=args.chunks,
         )
+    elif system.startswith("planned_v2_"):
+        strategy = system.removeprefix("planned_v2_")
+        plan, candidates = planned_retrieve(
+            collection,
+            query,
+            args.embedding_model,
+            args.ollama_host,
+            top_k=args.pool_depth,
+            candidate_k=args.pool_depth,
+            rerank_mode="none",
+            retrieval_strategy=strategy,
+            chunks_path=args.chunks,
+            fusion_mode="anchored",
+        )
     elif system.startswith("planned_"):
         strategy = system.removeprefix("planned_")
         plan, candidates = planned_retrieve(
@@ -334,10 +349,10 @@ def build_summary(
     legacy_only = 0
     for manifest in manifests:
         for item in manifest["provenance"]:
-            systems = list(item["system_ranks"])
-            if len(systems) == 1:
-                system_unique[systems[0]] += 1
-            if item["legacy_judged"] and not systems:
+            contributing_systems = list(item["system_ranks"])
+            if len(contributing_systems) == 1:
+                system_unique[contributing_systems[0]] += 1
+            if item["legacy_judged"] and not contributing_systems:
                 legacy_only += 1
     return {
         "dataset": portable_path(args.dataset),

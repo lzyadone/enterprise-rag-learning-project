@@ -24,7 +24,6 @@ DEFAULT_CANDIDATE_POOLS = PROJECT_ROOT / "eval" / "retrieval_union_v1" / "candid
 DEFAULT_QRELS = PROJECT_ROOT / "eval" / "benchmarks" / "rag_retrieval_union_v1" / "qrels_llm.jsonl"
 DEFAULT_LATENCY_RESULTS = PROJECT_ROOT / "eval" / "planned_retrieval_cache_benchmark" / "results.jsonl"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "eval" / "auto_retrieval_routing"
-SYSTEMS = ("direct_hybrid", "planned_hybrid")
 
 
 def parse_args() -> argparse.Namespace:
@@ -33,8 +32,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--candidate-pools", type=Path, default=DEFAULT_CANDIDATE_POOLS)
     parser.add_argument("--qrels", type=Path, default=DEFAULT_QRELS)
     parser.add_argument("--latency-results", type=Path, default=DEFAULT_LATENCY_RESULTS)
+    parser.add_argument("--direct-system", default="direct_hybrid")
+    parser.add_argument("--planned-system", default="planned_hybrid")
     parser.add_argument("--latency-budget-ms", type=int, default=12000)
     parser.add_argument("--relevant-threshold", type=int, default=2)
+    parser.add_argument("--quality-margin", type=float, default=0.02)
+    parser.add_argument("--mrr-margin", type=float, default=0.05)
+    parser.add_argument("--oracle-agreement-min", type=float, default=0.75)
+    parser.add_argument("--max-planned-regret", type=float, default=0.25)
     parser.add_argument(
         "--evaluation-role",
         choices=("calibration", "holdout"),
@@ -52,6 +57,9 @@ def main() -> None:
     pools = load_candidate_pools(args.candidate_pools)
     grades_by_query = load_complete_qrels(args.qrels, pools)
     optimized_latency = load_optimized_latency(args.latency_results)
+    systems = (args.direct_system, args.planned_system)
+    if args.direct_system == args.planned_system:
+        raise ValueError("direct-system and planned-system must be different")
 
     records: list[dict[str, Any]] = []
     for manifest in manifests:
@@ -63,26 +71,31 @@ def main() -> None:
             requested_mode="auto",
             latency_budget_ms=args.latency_budget_ms,
         )
+        missing_systems = [system for system in systems if system not in manifest["systems"]]
+        if missing_systems:
+            raise ValueError(f"{case_id} manifest is missing systems: {missing_systems}")
         metrics_by_system = {
             system: ranking_metrics(
                 manifest["systems"][system]["chunk_ids"],
                 grades_by_query[case_id],
                 args.relevant_threshold,
             )
-            for system in SYSTEMS
+            for system in systems
         }
-        selected_system = f"{decision.selected_mode}_hybrid"
+        selected_system = (
+            args.planned_system if decision.selected_mode == "planned" else args.direct_system
+        )
         oracle_system = max(
-            SYSTEMS,
+            systems,
             key=lambda system: (
                 metrics_by_system[system]["ndcg_at_10"],
                 metrics_by_system[system]["recall_at_10"],
-                system == "direct_hybrid",
+                system == args.direct_system,
             ),
         )
         latency_by_system = {
             system: system_latency_seconds(manifest, system, optimized_latency)
-            for system in SYSTEMS
+            for system in systems
         }
         records.append(
             {
@@ -104,7 +117,7 @@ def main() -> None:
             flush=True,
         )
 
-    summary = build_summary(args, records, bool(optimized_latency))
+    summary = build_summary(args, records, bool(optimized_latency), systems)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     write_jsonl(args.output_dir / "results.jsonl", records)
     write_json(args.output_dir / "summary.json", summary)
@@ -168,9 +181,10 @@ def build_summary(
     args: argparse.Namespace,
     records: list[dict[str, Any]],
     used_optimized_planned_latency: bool,
+    systems: tuple[str, str],
 ) -> dict[str, Any]:
     rows = []
-    for system in ("direct_hybrid", "planned_hybrid", "auto"):
+    for system in (*systems, "auto"):
         metrics = []
         seconds = []
         for record in records:
@@ -194,7 +208,7 @@ def build_summary(
         for mode in ("direct", "planned")
     }
     is_holdout = args.evaluation_role == "holdout"
-    return {
+    summary = {
         "evaluation_role": args.evaluation_role,
         "cases": len(records),
         "qrels": portable_path(args.qrels),
@@ -202,6 +216,8 @@ def build_summary(
         "latency_budget_ms": args.latency_budget_ms,
         "used_optimized_planned_latency": used_optimized_planned_latency,
         "route_counts": route_counts,
+        "direct_system": args.direct_system,
+        "planned_system": args.planned_system,
         "oracle_agreement_cases": oracle_agreement,
         "oracle_agreement_rate": round(oracle_agreement / len(records), 4),
         "systems": rows,
@@ -213,6 +229,83 @@ def build_summary(
             else "These queries informed the initial routing threshold, so oracle agreement is a "
             "calibration result rather than evidence of generalization."
         ),
+    }
+    summary["acceptance"] = evaluate_acceptance(args, records, rows, systems)
+    return summary
+
+
+def evaluate_acceptance(
+    args: argparse.Namespace,
+    records: list[dict[str, Any]],
+    system_rows: list[dict[str, Any]],
+    systems: tuple[str, str],
+) -> dict[str, Any]:
+    direct_system, planned_system = systems
+    by_system = {str(row["system"]): row for row in system_rows}
+    direct = by_system[direct_system]
+    auto = by_system["auto"]
+    harmful_planned_cases = []
+    for record in records:
+        if record["selected_system"] != planned_system:
+            continue
+        direct_ndcg = float(record["metrics"][direct_system]["ndcg_at_10"])
+        planned_ndcg = float(record["metrics"][planned_system]["ndcg_at_10"])
+        regret = direct_ndcg - planned_ndcg
+        if regret > args.max_planned_regret:
+            harmful_planned_cases.append(
+                {"case_id": record["case_id"], "ndcg_regret": round(regret, 4)}
+            )
+
+    oracle_rate = sum(1 for record in records if record["oracle_match"]) / len(records)
+    checks = [
+        {
+            "name": "auto_ndcg_noninferior",
+            "passed": auto["avg_ndcg_at_10"] >= direct["avg_ndcg_at_10"] - args.quality_margin,
+            "actual": auto["avg_ndcg_at_10"],
+            "required": round(direct["avg_ndcg_at_10"] - args.quality_margin, 4),
+        },
+        {
+            "name": "auto_recall_noninferior",
+            "passed": auto["avg_recall_at_10"] >= direct["avg_recall_at_10"] - args.quality_margin,
+            "actual": auto["avg_recall_at_10"],
+            "required": round(direct["avg_recall_at_10"] - args.quality_margin, 4),
+        },
+        {
+            "name": "auto_mrr_noninferior",
+            "passed": auto["mrr_at_10"] >= direct["mrr_at_10"] - args.mrr_margin,
+            "actual": auto["mrr_at_10"],
+            "required": round(direct["mrr_at_10"] - args.mrr_margin, 4),
+        },
+        {
+            "name": "oracle_agreement",
+            "passed": oracle_rate >= args.oracle_agreement_min,
+            "actual": round(oracle_rate, 4),
+            "required": args.oracle_agreement_min,
+        },
+        {
+            "name": "planned_route_worst_case",
+            "passed": not harmful_planned_cases,
+            "actual": len(harmful_planned_cases),
+            "required": 0,
+        },
+        {
+            "name": "median_latency_within_budget",
+            "passed": auto["median_seconds"] <= args.latency_budget_ms / 1000,
+            "actual": auto["median_seconds"],
+            "required": args.latency_budget_ms / 1000,
+        },
+    ]
+    return {
+        "passed": all(bool(check["passed"]) for check in checks),
+        "checks": checks,
+        "harmful_planned_cases": harmful_planned_cases,
+        "thresholds": {
+            "quality_margin": args.quality_margin,
+            "mrr_margin": args.mrr_margin,
+            "oracle_agreement_min": args.oracle_agreement_min,
+            "max_planned_regret": args.max_planned_regret,
+            "latency_budget_ms": args.latency_budget_ms,
+        },
     }
 
 
@@ -234,6 +327,8 @@ def summary_markdown(summary: dict[str, Any], records: list[dict[str, Any]]) -> 
         f"- evaluation role: {summary['evaluation_role']}",
         f"- qrels: {summary['qrels']}",
         f"- latency budget: {summary['latency_budget_ms']} ms",
+        f"- direct system: {summary['direct_system']}",
+        f"- planned system: {summary['planned_system']}",
         f"- route counts: {summary['route_counts']}",
         f"- optimized planned latency used: {summary['used_optimized_planned_latency']}",
         "",
@@ -254,6 +349,21 @@ def summary_markdown(summary: dict[str, Any], records: list[dict[str, Any]]) -> 
             f"Oracle agreement: {summary['oracle_agreement_cases']}/{summary['cases']} "
             f"({summary['oracle_agreement_rate']:.1%}).",
             "",
+            "## Pre-registered Acceptance",
+            "",
+            f"Overall: {'PASS' if summary['acceptance']['passed'] else 'FAIL'}",
+            "",
+            "| check | passed | actual | required |",
+            "|---|---|---:|---:|",
+        ]
+    )
+    for check in summary["acceptance"]["checks"]:
+        lines.append(
+            f"| {check['name']} | {check['passed']} | {check['actual']} | {check['required']} |"
+        )
+    lines.extend(
+        [
+            "",
             "## Per-case Decisions",
             "",
             "| case | selected | oracle | score | nDCG direct/planned | seconds | reasons |",
@@ -261,8 +371,8 @@ def summary_markdown(summary: dict[str, Any], records: list[dict[str, Any]]) -> 
         ]
     )
     for row in records:
-        direct = row["metrics"]["direct_hybrid"]["ndcg_at_10"]
-        planned = row["metrics"]["planned_hybrid"]["ndcg_at_10"]
+        direct = row["metrics"][summary["direct_system"]]["ndcg_at_10"]
+        planned = row["metrics"][summary["planned_system"]]["ndcg_at_10"]
         decision = row["decision"]
         lines.append(
             f"| {row['case_id']} | {row['selected_system']} | {row['oracle_system']} | "
