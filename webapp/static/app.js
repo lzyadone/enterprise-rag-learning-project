@@ -29,10 +29,8 @@ async function loadStatus() {
     const res = await fetch("/api/status");
     const data = await res.json();
     const longCount = data.long_memory?.memory_count ?? 0;
-    el("statusLine").textContent = `知识库 ${data.collection} · ${data.indexed_count} 个 chunk · 长期记忆 ${longCount} 条 · DeepSeek ${data.deepseek_key ? "已就绪" : "未配置"}`;
-    if (!data.deepseek_key) {
-      el("llmProvider").value = "ollama";
-    }
+    el("statusLine").textContent = `知识库 ${data.collection} · ${data.indexed_count} 个 chunk · 长期记忆 ${longCount} 条 · DeepSeek ${data.deepseek_key ? "已配置（未验证）" : "未配置"}`;
+    el("llmProvider").value = data.default_llm_provider || (data.deepseek_key ? "deepseek" : "ollama");
   } catch (error) {
     el("statusLine").textContent = `status error: ${error.message}`;
   }
@@ -88,6 +86,7 @@ async function ask() {
     top_k: Number(el("topK").value),
     candidate_k: Number(el("candidateK").value),
     max_context_chars: Number(el("maxContextChars").value),
+    latency_budget_ms: Number(el("latencyBudgetMs").value),
     use_memory: el("useMemory").checked,
     use_long_memory: el("useLongMemory").checked,
     audit_answer: el("auditAnswer").checked,
@@ -148,6 +147,10 @@ function renderEffectSummary(data) {
   const longStats = data.memory?.long_term?.stats || {};
   const longCount = longStats.memory_count || 0;
   const retrievedLong = data.memory?.long_term?.retrieved?.length || 0;
+  const route = data.routing;
+  const routeMode = route?.selected_mode || data.settings.retrieval_mode || "memory";
+  const routeRequest = route?.requested_mode || data.settings.requested_retrieval_mode || "-";
+  const routeScore = route ? `${route.complexity_score}/${route.threshold}` : "-";
   const planCategories = data.plan?.category_filters?.length ? data.plan.category_filters.join(", ") : "none";
   const aspectCount = data.plan?.aspects?.length || 0;
   const coverageLabel = aspectCount ? `${aspectCount} 个回答面` : data.plan ? "单一问题" : "直接检索";
@@ -158,6 +161,11 @@ function renderEffectSummary(data) {
   const coverageText = coveragePass === undefined ? "未运行" : coveragePass ? "通过" : "不完整";
   el("effectSummary").innerHTML = `
     <div class="summary-grid">
+      <div class="summary-card">
+        <div class="summary-label">检索路由</div>
+        <div class="summary-value">${escapeHtml(routeMode)}</div>
+        <div class="summary-note">${escapeHtml(routeRequest)} · score ${escapeHtml(routeScore)}</div>
+      </div>
       <div class="summary-card">
         <div class="summary-label">检索覆盖</div>
         <div class="summary-value">${sourceCount} 条来源</div>
@@ -190,13 +198,25 @@ function renderEffectSummary(data) {
 function renderPlan(data) {
   const plan = data.plan;
   const settings = data.settings;
+  const routing = data.routing;
+  const routeReasonLabels = {
+    forced_by_user: "用户强制指定",
+    complexity_threshold_reached: "复杂度达到规划阈值",
+    simple_or_specific_query: "问题较聚焦，使用快速路径",
+    estimated_planned_latency_exceeds_budget: "预计规划耗时超过延迟预算",
+    multiple_answer_aspects: "包含多个必须回答的方面",
+    multi_category_expansion_without_aspects: "需要跨多个知识类别扩展检索",
+    aspect_detected_with_low_category_confidence: "识别到回答方面，但类别置信度较低",
+    cross_category_comparison: "需要跨类别比较",
+  };
   const html = [
     `<div class="insight">
       <div class="insight-title">本轮检索意图</div>
       <div class="meta">系统先把用户问题映射到知识类别，再用原始问题和扩展问题多路检索。</div>
     </div>`,
     `<div class="kv">
-      <b>mode</b><span>${escapeHtml(settings.retrieval_mode)}</span>
+      <b>requested mode</b><span>${escapeHtml(settings.requested_retrieval_mode || settings.retrieval_mode)}</span>
+      <b>selected mode</b><span>${escapeHtml(settings.retrieval_mode)}</span>
       <b>channel</b><span>${escapeHtml(settings.retrieval_strategy || "dense")}</span>
       <b>effective query</b><span>${escapeHtml(data.effective_query)}</span>
       <b>provider</b><span>${escapeHtml(settings.llm_provider)}</span>
@@ -205,8 +225,19 @@ function renderPlan(data) {
       ${settings.reranker ? `<b>reranker runtime</b><span>${escapeHtml(`${settings.reranker.backend} / ${settings.reranker.device}`)}</span>` : ""}
       <b>top_k</b><span>${settings.top_k}</span>
       <b>candidate_k</b><span>${settings.candidate_k}</span>
+      <b>latency budget</b><span>${settings.latency_budget_ms} ms</span>
     </div>`,
   ];
+  if (routing) {
+    const features = routing.features || {};
+    html.push(`<div class="kv">
+      <b>route score</b><span>${routing.complexity_score}/${routing.threshold}</span>
+      <b>route reasons</b><span>${escapeHtml((routing.reasons || []).map((reason) => routeReasonLabels[reason] || reason).join("；"))}</span>
+      <b>plan shape</b><span>${features.aspect_count || 0} aspects · ${features.sub_query_count || 0} sub-queries · ${features.category_count || 0} categories</span>
+      <b>planned estimate</b><span>${routing.estimated_planned_latency_ms} ms</span>
+      <b>plan confidence</b><span>${features.confidence ?? "-"}</span>
+    </div>`);
+  }
   if (plan) {
     html.push(`<div class="kv">
       <b>intent</b><span>${escapeHtml(plan.intent)}</span>

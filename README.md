@@ -282,6 +282,20 @@ python experiments\27_planned_retrieval_latency\benchmark_latency.py
 
 每个唯一规划查询现在只生成一次向量，再复用于全库和 category-filtered 检索。平均 embedding 调用由 `22.50` 次降到 `5.50` 次；Chroma、BM25、RRF 和最终候选选择均未减少。
 
+在此基础上增加 `auto / direct / planned` 可解释检索路由。自动模式根据 query plan 复杂度和延迟预算选择路径：
+
+```powershell
+python experiments\28_auto_retrieval_routing\evaluate_router.py
+```
+
+| system | Recall@10 | MRR@10 | nDCG@10 | 中位耗时 |
+|---|---:|---:|---:|---:|
+| always direct hybrid | 0.408 | **1.000** | 0.580 | **2.41s** |
+| always planned hybrid | 0.461 | 0.854 | 0.620 | 7.50s |
+| auto | **0.470** | 0.938 | **0.666** | 3.43s |
+
+当前 8 题校准集上，auto 选择 5 次 planned 和 3 次 direct，与逐题 nDCG 较优路径一致 8/8。该结果不是独立 holdout 验证；Web 会显示实际选择、复杂度分数、延迟估算和路由原因。
+
 ## 学习记录
 
 建议按顺序阅读这些阶段记录：
@@ -300,6 +314,7 @@ python experiments\27_planned_retrieval_latency\benchmark_latency.py
 - `notes/38_retrieval_union_pool.md`
 - `notes/39_llm_judged_candidate_generator_eval.md`
 - `notes/40_planned_retrieval_embedding_cache.md`
+- `notes/41_automatic_retrieval_routing.md`
 
 ## 适合作品集展示的点
 
@@ -314,7 +329,7 @@ python experiments\27_planned_retrieval_latency\benchmark_latency.py
 - 给 Web 页面增加更清晰的“答案/来源/审计”展示。
 - 增加更多真实业务数据集，验证跨领域泛化。
 - 扩充 union benchmark 的 query 数量，并对模型严重分歧样本做独立人工复核。
-- 根据问题复杂度和延迟预算，在 `direct_hybrid` 与 `planned_hybrid` 之间自动路由。
+- 增加不参与路由规则设计的 holdout 问题，验证自动路由泛化能力。
 - 并行执行 planned retrieval 中相互独立的子查询，继续降低复杂问题延迟。
 - 增加候选与重排结果缓存，降低 planned retrieval 的在线延迟。
 - 增加 GitHub Actions 或本地一键评测脚本。

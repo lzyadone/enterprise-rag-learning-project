@@ -242,8 +242,9 @@ def planned_retrieve(
     retrieval_strategy: str = "dense",
     chunks_path: Path = DEFAULT_CHUNKS_PATH,
     reuse_query_embeddings: bool = True,
+    query_plan: QueryPlan | None = None,
 ) -> tuple[QueryPlan, list[RetrievedChunk]]:
-    plan = plan_query(query, max_categories=max_categories)
+    plan = query_plan or plan_query(query, max_categories=max_categories)
     if manual_category:
         plan.category_filters = [manual_category]
         plan.warnings.append("manual category override applied")

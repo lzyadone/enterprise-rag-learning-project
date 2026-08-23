@@ -37,6 +37,7 @@
             <label class="field">
               <span>问题处理</span>
               <select id="retrievalMode">
+                <option value="auto">auto</option>
                 <option value="planned">planned</option>
                 <option value="direct">direct</option>
               </select>
@@ -67,6 +68,10 @@
             <label class="field">
               <span>上下文上限</span>
               <input id="maxContextChars" type="number" min="2000" max="20000" step="500" value="9000" />
+            </label>
+            <label class="field">
+              <span>延迟预算 (ms)</span>
+              <input id="latencyBudgetMs" type="number" min="1000" max="30000" step="1000" value="12000" />
             </label>
           </div>
 

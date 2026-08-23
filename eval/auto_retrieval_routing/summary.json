@@ -1,0 +1,44 @@
+{
+  "evaluation_role": "router calibration set; not an independent holdout",
+  "cases": 8,
+  "qrels": "eval\\benchmarks\\rag_retrieval_union_v1\\qrels_llm.jsonl",
+  "relevant_threshold": 2,
+  "latency_budget_ms": 12000,
+  "used_optimized_planned_latency": true,
+  "route_counts": {
+    "direct": 3,
+    "planned": 5
+  },
+  "oracle_agreement_cases": 8,
+  "oracle_agreement_rate": 1.0,
+  "systems": [
+    {
+      "system": "direct_hybrid",
+      "avg_recall_at_10": 0.4082,
+      "avg_precision_at_10": 0.55,
+      "mrr_at_10": 1.0,
+      "avg_ndcg_at_10": 0.58,
+      "avg_seconds": 2.2214,
+      "median_seconds": 2.4108
+    },
+    {
+      "system": "planned_hybrid",
+      "avg_recall_at_10": 0.461,
+      "avg_precision_at_10": 0.6,
+      "mrr_at_10": 0.8542,
+      "avg_ndcg_at_10": 0.6202,
+      "avg_seconds": 7.2713,
+      "median_seconds": 7.4995
+    },
+    {
+      "system": "auto",
+      "avg_recall_at_10": 0.47,
+      "avg_precision_at_10": 0.6125,
+      "mrr_at_10": 0.9375,
+      "avg_ndcg_at_10": 0.6664,
+      "avg_seconds": 5.4386,
+      "median_seconds": 3.4284
+    }
+  ],
+  "boundary": "The same eight queries informed the initial routing threshold, so oracle agreement is a calibration result. Generalization requires a larger, independently held-out query set."
+}

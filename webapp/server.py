@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import os
 import sys
 import time
 import uuid
@@ -29,7 +30,9 @@ from src.cross_encoder_reranking import runtime_config as reranker_runtime_confi
 from src.deepseek_client import DEFAULT_BASE_URL, DEFAULT_MODEL, chat_completion, get_deepseek_api_key  # noqa: E402
 from src.long_memory import DEFAULT_NAMESPACE, LongMemoryStore, format_long_memory_context  # noqa: E402
 from src.ollama_http import generate  # noqa: E402
+from src.query_planning import plan_query  # noqa: E402
 from src.retrieval import RetrievedChunk, planned_retrieve, retrieve_with_strategy  # noqa: E402
+from src.retrieval_routing import RetrievalRouteDecision, route_retrieval  # noqa: E402
 
 
 STATIC_DIR = PROJECT_ROOT / "webapp" / "static"
@@ -135,6 +138,7 @@ class RAGRequestHandler(BaseHTTPRequestHandler):
                     "collection": STATE.collection_name,
                     "indexed_count": STATE.collection.count(),
                     "deepseek_key": bool(get_deepseek_api_key()),
+                    "default_llm_provider": default_llm_provider(),
                     "reranker": reranker_runtime_config(),
                     "long_memory": STATE.long_memory.stats(DEFAULT_NAMESPACE),
                 }
@@ -207,18 +211,19 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
     use_memory = bool(payload.get("use_memory", True))
     use_long_memory = bool(payload.get("use_long_memory", use_memory))
     memory_namespace = str(payload.get("memory_namespace") or DEFAULT_NAMESPACE)
-    llm_provider = str(payload.get("llm_provider") or ("deepseek" if get_deepseek_api_key() else "ollama"))
-    retrieval_mode = str(payload.get("retrieval_mode") or "planned")
-    retrieval_strategy = str(payload.get("retrieval_strategy") or "dense")
+    llm_provider = str(payload.get("llm_provider") or default_llm_provider())
+    requested_retrieval_mode = str(payload.get("retrieval_mode") or "auto")
+    retrieval_strategy = str(payload.get("retrieval_strategy") or "hybrid")
     rerank_mode = str(payload.get("rerank_mode") or "lexical")
     embedding_model = str(payload.get("embedding_model") or "bge-m3")
     ollama_host = str(payload.get("ollama_host") or "http://127.0.0.1:11434")
     top_k = int(payload.get("top_k") or 5)
     candidate_k = int(payload.get("candidate_k") or 12)
+    latency_budget_ms = int(payload.get("latency_budget_ms") or 12000)
     max_context_chars = int(payload.get("max_context_chars") or 9000)
     audit_answer = bool(payload.get("audit_answer", True))
-    if retrieval_mode not in {"direct", "planned"}:
-        raise ValueError("retrieval_mode must be direct or planned")
+    if requested_retrieval_mode not in {"auto", "direct", "planned"}:
+        raise ValueError("retrieval_mode must be auto, direct, or planned")
     if retrieval_strategy not in {"dense", "hybrid"}:
         raise ValueError("retrieval_strategy must be dense or hybrid")
 
@@ -238,32 +243,43 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
             long_memory_error = f"{type(exc).__name__}: {exc}"
 
     memory_answer_mode = is_memory_answer_query(query)
+    route_decision: RetrievalRouteDecision | None = None
+    selected_retrieval_mode = "memory" if memory_answer_mode else requested_retrieval_mode
     if memory_answer_mode:
         plan = None
         retrieved = []
-    elif retrieval_mode == "direct":
-        plan = None
-        retrieved = retrieve_with_strategy(
-            STATE.collection,
-            effective_query,
-            embedding_model,
-            ollama_host,
-            top_k=top_k,
-            candidate_k=candidate_k,
-            rerank_mode=rerank_mode,
-            retrieval_strategy=retrieval_strategy,
-        )
     else:
-        plan, retrieved = planned_retrieve(
-            STATE.collection,
-            effective_query,
-            embedding_model,
-            ollama_host,
-            top_k=top_k,
-            candidate_k=candidate_k,
-            rerank_mode=rerank_mode,
-            retrieval_strategy=retrieval_strategy,
+        routing_plan = plan_query(effective_query)
+        route_decision = route_retrieval(
+            routing_plan,
+            requested_mode=requested_retrieval_mode,
+            latency_budget_ms=latency_budget_ms,
         )
+        selected_retrieval_mode = route_decision.selected_mode
+        if selected_retrieval_mode == "direct":
+            plan = None
+            retrieved = retrieve_with_strategy(
+                STATE.collection,
+                effective_query,
+                embedding_model,
+                ollama_host,
+                top_k=top_k,
+                candidate_k=candidate_k,
+                rerank_mode=rerank_mode,
+                retrieval_strategy=retrieval_strategy,
+            )
+        else:
+            plan, retrieved = planned_retrieve(
+                STATE.collection,
+                effective_query,
+                embedding_model,
+                ollama_host,
+                top_k=top_k,
+                candidate_k=candidate_k,
+                rerank_mode=rerank_mode,
+                retrieval_strategy=retrieval_strategy,
+                query_plan=routing_plan,
+            )
 
     short_memory_context = memory.context() if use_memory else ""
     memory_context = build_memory_context(short_memory_context, long_memory_hits)
@@ -355,18 +371,21 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
         "effective_query": effective_query,
         "settings": {
             "llm_provider": llm_provider,
-            "retrieval_mode": retrieval_mode,
+            "requested_retrieval_mode": requested_retrieval_mode,
+            "retrieval_mode": selected_retrieval_mode,
             "retrieval_strategy": retrieval_strategy,
             "rerank_mode": rerank_mode,
             "reranker": reranker_runtime_config() if rerank_mode == "cross_encoder" else None,
             "top_k": top_k,
             "candidate_k": candidate_k,
+            "latency_budget_ms": latency_budget_ms,
             "max_context_chars": max_context_chars,
             "use_memory": use_memory,
             "use_long_memory": use_long_memory,
             "memory_namespace": memory_namespace,
             "memory_answer_mode": memory_answer_mode,
         },
+        "routing": route_decision.as_dict() if route_decision else None,
         "plan": plan.as_dict() if plan else None,
         "sources": source_rows,
         "context": assembled.as_dict(),
@@ -384,6 +403,15 @@ def build_effective_query(query: str, memory: ConversationMemory | None) -> str:
     if len(query) < 24 or any(marker in query for marker in ["这个", "上面", "刚才", "继续", "下一步", "它"]):
         return f"{recent_questions} {query}".strip()
     return query
+
+
+def default_llm_provider() -> str:
+    configured = os.getenv("RAG_DEFAULT_LLM_PROVIDER", "").strip().casefold()
+    if configured in {"deepseek", "ollama"}:
+        if configured == "deepseek" and not get_deepseek_api_key():
+            return "ollama"
+        return configured
+    return "deepseek" if get_deepseek_api_key() else "ollama"
 
 
 def build_memory_context(short_memory_context: str, long_memory_hits: list[Any]) -> str:
