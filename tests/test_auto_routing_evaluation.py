@@ -15,6 +15,36 @@ SPEC.loader.exec_module(MODULE)
 
 
 class AutoRoutingAcceptanceTest(unittest.TestCase):
+    def test_summary_excludes_candidate_pool_coverage_gaps_from_quality(self) -> None:
+        args = make_summary_args()
+        evaluable = make_record("q1", "direct_hybrid", 0.8, 0.7, oracle_match=True)
+        add_full_metrics(evaluable)
+        evaluable["evaluable"] = True
+        evaluable["decision"] = {"selected_mode": "direct"}
+        evaluable["latency_seconds"] = {"direct_hybrid": 1.0, "planned_v2_hybrid": 3.0}
+        gap = make_record("q2", "planned_v2_hybrid", 0.0, 0.0, oracle_match=False)
+        add_full_metrics(gap)
+        gap.update(
+            {
+                "evaluable": False,
+                "oracle_match": None,
+                "decision": {"selected_mode": "planned"},
+                "latency_seconds": {"direct_hybrid": 1.2, "planned_v2_hybrid": 3.2},
+            }
+        )
+
+        summary = MODULE.build_summary(
+            args,
+            [evaluable, gap],
+            False,
+            ("direct_hybrid", "planned_v2_hybrid"),
+        )
+
+        self.assertEqual(1, summary["evaluable_cases"])
+        self.assertEqual(1, summary["coverage_gap_cases"])
+        self.assertEqual(0.8, summary["systems"][0]["avg_ndcg_at_10"])
+        self.assertEqual(1.0, summary["oracle_agreement_rate"])
+
     def test_acceptance_uses_configured_system_names(self) -> None:
         args = make_args()
         records = [
@@ -67,6 +97,16 @@ def make_args() -> argparse.Namespace:
     )
 
 
+def make_summary_args() -> argparse.Namespace:
+    args = make_args()
+    args.evaluation_role = "development"
+    args.qrels = Path("qrels.jsonl")
+    args.relevant_threshold = 2
+    args.direct_system = "direct_hybrid"
+    args.planned_system = "planned_v2_hybrid"
+    return args
+
+
 def make_record(
     case_id: str,
     selected_system: str,
@@ -94,6 +134,17 @@ def metric_row(system: str, *, ndcg: float, recall: float, mrr: float, median: f
         "mrr_at_10": mrr,
         "median_seconds": median,
     }
+
+
+def add_full_metrics(record: dict) -> None:
+    for metrics in record["metrics"].values():
+        metrics.update(
+            {
+                "recall_at_10": metrics["ndcg_at_10"],
+                "precision_at_10": metrics["ndcg_at_10"],
+                "mrr_at_10": metrics["ndcg_at_10"],
+            }
+        )
 
 
 if __name__ == "__main__":

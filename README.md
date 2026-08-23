@@ -13,6 +13,7 @@
 - 端到端评测：planned hybrid 10/10 通过，quality pass rate 100%
 - 检索实验：direct hybrid 双指标通过率 75%，dense 基线为 62.5%
 - 重排实验：planned hybrid 在 8/8 问题上保持双指标通过；cross-encoder 未提升总体 nDCG，暂不设为默认
+- 自然问题开发集：direct nDCG@10 为 0.840，planned v2 为 0.739，当前 auto 为 0.769；默认继续使用 direct
 
 最新评测摘要：
 
@@ -318,7 +319,17 @@ planned v2 使用 original-query anchor、Weighted RRF、扩展总权重上限�
 
 auto 通过了 Recall、MRR、最坏样例和延迟门槛，但 nDCG 非劣门槛差 `0.0007`，oracle 一致率为 `11/20`，低于预注册的 75%。分层后，auto 在 compound 题上优于 direct（`0.818` 对 `0.810`），但 focused 题因过度规划而退化（`0.791` 对 `0.840`）。因此默认继续使用 `direct`，auto 不进入发布候选；这套 holdout 不再用于调参。
 
-为了避免继续用人工考试题调路由，新增 DeepSeek 自然用户问题开发集。生成器按 persona 和业务场景出题，bge-m3 做语义去重，再由看不到目标标签的 DeepSeek 独立复审自然度和信息需求数量；38 条原始题去除 6 条同路由重复后保留 32 条。当前规则路由与生成意图只一致 `15/32`：单需求保留率 `44.4%`，多需求识别率 `50.0%`。这说明关键词规则既会因术语多而过度规划，也会漏掉没有固定触发词的真实复杂问题；该开发结果不代表检索质量，下一步要通过 union pool 和完整 qrels 判断哪条检索路径实际更好。
+为了避免继续用人工考试题调路由，新增 DeepSeek 自然用户问题开发集。生成器按 persona 和业务场景出题，bge-m3 做语义去重，再由看不到目标标签的 DeepSeek 独立复审自然度和信息需求数量；38 条原始题去除 6 条同路由重复后保留 32 条。
+
+随后对 direct 与 planned v2 的 349 个匿名候选完整盲标。32 题中 30 题存在可用证据，2 题暴露 PDFLoader 页码资料缺口：
+
+| system | Recall@10 | MRR@10 | nDCG@10 | 中位耗时 |
+|---|---:|---:|---:|---:|
+| always direct hybrid | **0.991** | **0.865** | **0.840** | **0.55s** |
+| always planned v2 hybrid | 0.935 | 0.691 | 0.739 | 2.25s |
+| current auto | 0.960 | 0.724 | 0.769 | 1.41s |
+
+19 题 direct 明显更好，只有 2 题 planned 明显更好；生成意图与逐题 oracle 一致 `16/30`，当前 auto 仅 `10/30`。根因不是单纯阈值错误：planner 会把具体复合问题错误扩展成通用 `RAG key components` 查询，导致原问题证据被宽泛资料挤出 Top 10。因此默认继续使用 direct，下一轮先约束规划扩展，再用新 holdout 验证。
 
 ## 学习记录
 
@@ -343,6 +354,7 @@ auto 通过了 Recall、MRR、最坏样例和延迟门槛，但 nDCG 非劣门�
 - `notes/43_anchored_planned_retrieval_v2.md`
 - `notes/44_routing_holdout_v2_release_decision.md`
 - `notes/45_deepseek_natural_query_development.md`
+- `notes/46_natural_query_retrieval_quality.md`
 
 ## 适合作品集展示的点
 
@@ -357,8 +369,8 @@ auto 通过了 Recall、MRR、最坏样例和延迟门槛，但 nDCG 非劣门�
 - 给 Web 页面增加更清晰的“答案/来源/审计”展示。
 - 增加更多真实业务数据集，验证跨领域泛化。
 - 扩充 union benchmark 的 query 数量，并对模型严重分歧样本做独立人工复核。
-- 从真实用户问题或单独开发集研究 focused 题过度路由，不能用 holdout v2 调阈值。
-- 对自然问题开发集建立 direct/planned union pool 和完整 qrels，再训练或调整路由意图层。
+- 在自然问题开发集上约束通用 aspect 和低一致性 query expansion，避免规划稀释原问题证据。
+- 修复 planner 后冻结新的独立 holdout；不能继续用 holdout v2 调参或把自然开发集结果当发布证明。
 - 对 holdout v2 做少量独立人工复核，确认 LLM 盲标结论没有系统性偏差。
 - 并行执行 planned retrieval 中相互独立的子查询，继续降低复杂问题延迟。
 - 增加候选与重排结果缓存，降低 planned retrieval 的在线延迟。

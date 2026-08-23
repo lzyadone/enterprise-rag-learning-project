@@ -42,7 +42,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-planned-regret", type=float, default=0.25)
     parser.add_argument(
         "--evaluation-role",
-        choices=("calibration", "holdout"),
+        choices=("calibration", "development", "holdout"),
         default="calibration",
         help="Declare whether routing rules have already seen this question set.",
     )
@@ -74,24 +74,37 @@ def main() -> None:
         missing_systems = [system for system in systems if system not in manifest["systems"]]
         if missing_systems:
             raise ValueError(f"{case_id} manifest is missing systems: {missing_systems}")
-        metrics_by_system = {
-            system: ranking_metrics(
-                manifest["systems"][system]["chunk_ids"],
-                grades_by_query[case_id],
-                args.relevant_threshold,
-            )
-            for system in systems
-        }
+        grades = grades_by_query[case_id]
+        qualified_documents = sum(
+            1 for grade in grades.values() if float(grade) >= args.relevant_threshold
+        )
+        evaluable = qualified_documents > 0
+        metrics_by_system = (
+            {
+                system: ranking_metrics(
+                    manifest["systems"][system]["chunk_ids"],
+                    grades,
+                    args.relevant_threshold,
+                )
+                for system in systems
+            }
+            if evaluable
+            else {system: empty_ranking_metrics() for system in systems}
+        )
         selected_system = (
             args.planned_system if decision.selected_mode == "planned" else args.direct_system
         )
-        oracle_system = max(
-            systems,
-            key=lambda system: (
-                metrics_by_system[system]["ndcg_at_10"],
-                metrics_by_system[system]["recall_at_10"],
-                system == args.direct_system,
-            ),
+        oracle_system = (
+            max(
+                systems,
+                key=lambda system: (
+                    metrics_by_system[system]["ndcg_at_10"],
+                    metrics_by_system[system]["recall_at_10"],
+                    system == args.direct_system,
+                ),
+            )
+            if evaluable
+            else None
         )
         latency_by_system = {
             system: system_latency_seconds(manifest, system, optimized_latency)
@@ -104,18 +117,31 @@ def main() -> None:
                 "decision": decision.as_dict(),
                 "selected_system": selected_system,
                 "oracle_system": oracle_system,
-                "oracle_match": selected_system == oracle_system,
+                "oracle_match": selected_system == oracle_system if evaluable else None,
+                "evaluable": evaluable,
+                "pool_coverage": {
+                    "qualified_documents": qualified_documents,
+                    "max_grade": max((float(grade) for grade in grades.values()), default=0.0),
+                },
                 "selected_seconds": latency_by_system[selected_system],
                 "metrics": metrics_by_system,
                 "latency_seconds": latency_by_system,
             }
         )
-        print(
-            f"{case_id}: {selected_system} oracle={oracle_system} "
-            f"nDCG={metrics_by_system[selected_system]['ndcg_at_10']:.3f} "
-            f"seconds={latency_by_system[selected_system]:.2f}",
-            flush=True,
-        )
+        if evaluable:
+            print(
+                f"{case_id}: {selected_system} oracle={oracle_system} "
+                f"nDCG={metrics_by_system[selected_system]['ndcg_at_10']:.3f} "
+                f"seconds={latency_by_system[selected_system]:.2f}",
+                flush=True,
+            )
+        else:
+            print(
+                f"{case_id}: {selected_system} coverage_gap "
+                f"max_grade={max((float(grade) for grade in grades.values()), default=0.0):.1f} "
+                f"seconds={latency_by_system[selected_system]:.2f}",
+                flush=True,
+            )
 
     summary = build_summary(args, records, bool(optimized_latency), systems)
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -133,7 +159,7 @@ def main() -> None:
             f"median={row['median_seconds']:.2f}s"
         )
     print(
-        f"oracle agreement: {summary['oracle_agreement_cases']}/{summary['cases']} "
+        f"oracle agreement: {summary['oracle_agreement_cases']}/{summary['evaluable_cases']} "
         f"({summary['oracle_agreement_rate']:.1%})"
     )
 
@@ -154,6 +180,16 @@ def ranking_metrics(
         "precision_at_10": float(at_10["precision_at_k"]),
         "mrr_at_10": float(at_10["reciprocal_rank"]),
         "ndcg_at_10": float(at_10["ndcg_at_k"]),
+    }
+
+
+def empty_ranking_metrics() -> dict[str, float]:
+    """Return explicit placeholders for a pool with no usable evidence."""
+    return {
+        "recall_at_10": 0.0,
+        "precision_at_10": 0.0,
+        "mrr_at_10": 0.0,
+        "ndcg_at_10": 0.0,
     }
 
 
@@ -183,17 +219,22 @@ def build_summary(
     used_optimized_planned_latency: bool,
     systems: tuple[str, str],
 ) -> dict[str, Any]:
+    evaluable_records = [record for record in records if record.get("evaluable", True)]
+    if not evaluable_records:
+        raise ValueError("no evaluable cases: every candidate pool lacks usable evidence")
     rows = []
     for system in (*systems, "auto"):
         metrics = []
         seconds = []
         for record in records:
             selected = record["selected_system"] if system == "auto" else system
-            metrics.append(record["metrics"][selected])
             seconds.append(float(record["latency_seconds"][selected]))
+            if record.get("evaluable", True):
+                metrics.append(record["metrics"][selected])
         rows.append(
             {
                 "system": system,
+                "evaluated_cases": len(metrics),
                 "avg_recall_at_10": mean(metrics, "recall_at_10"),
                 "avg_precision_at_10": mean(metrics, "precision_at_10"),
                 "mrr_at_10": mean(metrics, "mrr_at_10"),
@@ -202,15 +243,19 @@ def build_summary(
                 "median_seconds": round(statistics.median(seconds), 4),
             }
         )
-    oracle_agreement = sum(1 for record in records if record["oracle_match"])
+    oracle_agreement = sum(1 for record in evaluable_records if record["oracle_match"])
     route_counts = {
         mode: sum(1 for record in records if record["decision"]["selected_mode"] == mode)
         for mode in ("direct", "planned")
     }
     is_holdout = args.evaluation_role == "holdout"
+    is_development = args.evaluation_role == "development"
     summary = {
         "evaluation_role": args.evaluation_role,
         "cases": len(records),
+        "evaluable_cases": len(evaluable_records),
+        "coverage_gap_cases": len(records) - len(evaluable_records),
+        "evaluable_pool_rate": round(len(evaluable_records) / len(records), 4),
         "qrels": portable_path(args.qrels),
         "relevant_threshold": args.relevant_threshold,
         "latency_budget_ms": args.latency_budget_ms,
@@ -219,13 +264,16 @@ def build_summary(
         "direct_system": args.direct_system,
         "planned_system": args.planned_system,
         "oracle_agreement_cases": oracle_agreement,
-        "oracle_agreement_rate": round(oracle_agreement / len(records), 4),
+        "oracle_agreement_rate": round(oracle_agreement / len(evaluable_records), 4),
         "systems": rows,
         "boundary": (
             "Questions were frozen before candidate generation and were not used to tune the current "
             "routing threshold. LLM relevance labels are an independent holdout signal, but a future "
             "human audit is still required."
             if is_holdout
+            else "These questions are development data generated to diagnose natural-language routing. "
+            "They may be used for later tuning, so their metrics must not be reported as holdout evidence."
+            if is_development
             else "These queries informed the initial routing threshold, so oracle agreement is a "
             "calibration result rather than evidence of generalization."
         ),
@@ -246,6 +294,8 @@ def evaluate_acceptance(
     auto = by_system["auto"]
     harmful_planned_cases = []
     for record in records:
+        if not record.get("evaluable", True):
+            continue
         if record["selected_system"] != planned_system:
             continue
         direct_ndcg = float(record["metrics"][direct_system]["ndcg_at_10"])
@@ -256,7 +306,11 @@ def evaluate_acceptance(
                 {"case_id": record["case_id"], "ndcg_regret": round(regret, 4)}
             )
 
-    oracle_rate = sum(1 for record in records if record["oracle_match"]) / len(records)
+    evaluable_records = [record for record in records if record.get("evaluable", True)]
+    oracle_rate = (
+        sum(1 for record in evaluable_records if record["oracle_match"])
+        / len(evaluable_records)
+    )
     checks = [
         {
             "name": "auto_ndcg_noninferior",
@@ -318,12 +372,17 @@ def summary_markdown(summary: dict[str, Any], records: list[dict[str, Any]]) -> 
         (
             "# Automatic Retrieval Routing Holdout"
             if summary["evaluation_role"] == "holdout"
+            else "# Automatic Retrieval Routing Development"
+            if summary["evaluation_role"] == "development"
             else "# Automatic Retrieval Routing Calibration"
         ),
         "",
         "## Setup",
         "",
         f"- cases: {summary['cases']}",
+        f"- evaluable cases: {summary['evaluable_cases']}",
+        f"- candidate-pool coverage gaps: {summary['coverage_gap_cases']}",
+        f"- evaluable pool rate: {summary['evaluable_pool_rate']:.1%}",
         f"- evaluation role: {summary['evaluation_role']}",
         f"- qrels: {summary['qrels']}",
         f"- latency budget: {summary['latency_budget_ms']} ms",
@@ -346,10 +405,14 @@ def summary_markdown(summary: dict[str, Any], records: list[dict[str, Any]]) -> 
     lines.extend(
         [
             "",
-            f"Oracle agreement: {summary['oracle_agreement_cases']}/{summary['cases']} "
+            f"Oracle agreement: {summary['oracle_agreement_cases']}/{summary['evaluable_cases']} "
             f"({summary['oracle_agreement_rate']:.1%}).",
             "",
-            "## Pre-registered Acceptance",
+            (
+                "## Pre-registered Acceptance"
+                if summary["evaluation_role"] == "holdout"
+                else "## Diagnostic Thresholds"
+            ),
             "",
             f"Overall: {'PASS' if summary['acceptance']['passed'] else 'FAIL'}",
             "",
@@ -374,8 +437,9 @@ def summary_markdown(summary: dict[str, Any], records: list[dict[str, Any]]) -> 
         direct = row["metrics"][summary["direct_system"]]["ndcg_at_10"]
         planned = row["metrics"][summary["planned_system"]]["ndcg_at_10"]
         decision = row["decision"]
+        oracle = row["oracle_system"] if row.get("evaluable", True) else "coverage_gap"
         lines.append(
-            f"| {row['case_id']} | {row['selected_system']} | {row['oracle_system']} | "
+            f"| {row['case_id']} | {row['selected_system']} | {oracle} | "
             f"{decision['complexity_score']} | {direct:.3f} / {planned:.3f} | "
             f"{row['selected_seconds']:.2f} | {', '.join(decision['reasons'])} |"
         )
