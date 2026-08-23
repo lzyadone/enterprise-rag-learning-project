@@ -269,6 +269,19 @@ python experiments\26_retrieval_pooling\evaluate_candidate_generators.py
 
 当前候选生成默认建议调整为 `direct_hybrid`，继续接 `lexical` 重排；复杂问题保留 `planned_hybrid` 实验路径。planning 能改善更深位置的召回，但当前约 22 秒中位耗时不适合全局启用。
 
+针对 planned retrieval 的重复 embedding，运行同代码、同 query plan 的严格 A/B：
+
+```powershell
+python experiments\27_planned_retrieval_latency\benchmark_latency.py
+```
+
+| system | 优化前中位耗时 | 优化后中位耗时 | 提速 | Top 10 顺序一致 |
+|---|---:|---:|---:|---:|
+| planned_dense | 23.13s | 6.03s | 3.95x | 8/8 |
+| planned_hybrid | 22.78s | 7.50s | 3.13x | 8/8 |
+
+每个唯一规划查询现在只生成一次向量，再复用于全库和 category-filtered 检索。平均 embedding 调用由 `22.50` 次降到 `5.50` 次；Chroma、BM25、RRF 和最终候选选择均未减少。
+
 ## 学习记录
 
 建议按顺序阅读这些阶段记录：
@@ -286,6 +299,7 @@ python experiments\26_retrieval_pooling\evaluate_candidate_generators.py
 - `notes/37_human_qrels_reranker_evaluation.md`
 - `notes/38_retrieval_union_pool.md`
 - `notes/39_llm_judged_candidate_generator_eval.md`
+- `notes/40_planned_retrieval_embedding_cache.md`
 
 ## 适合作品集展示的点
 
@@ -300,6 +314,7 @@ python experiments\26_retrieval_pooling\evaluate_candidate_generators.py
 - 给 Web 页面增加更清晰的“答案/来源/审计”展示。
 - 增加更多真实业务数据集，验证跨领域泛化。
 - 扩充 union benchmark 的 query 数量，并对模型严重分歧样本做独立人工复核。
-- 并行执行 planned retrieval 子查询并缓存 query embedding，降低约 22 秒的中位延迟。
+- 根据问题复杂度和延迟预算，在 `direct_hybrid` 与 `planned_hybrid` 之间自动路由。
+- 并行执行 planned retrieval 中相互独立的子查询，继续降低复杂问题延迟。
 - 增加候选与重排结果缓存，降低 planned retrieval 的在线延迟。
 - 增加 GitHub Actions 或本地一键评测脚本。

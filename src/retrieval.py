@@ -149,9 +149,17 @@ def direct_retrieve(
     candidate_k: int | None = None,
     category: str | None = None,
     rerank_mode: str = "none",
+    query_embedding: list[float] | None = None,
+    use_embedding_cache: bool = True,
 ) -> list[RetrievedChunk]:
     retrieval_k = max(top_k, candidate_k or top_k)
-    query_embedding = embed_query(query, embedding_model, ollama_host)
+    if query_embedding is None:
+        query_embedding = embed_query(
+            query,
+            embedding_model,
+            ollama_host,
+            use_cache=use_embedding_cache,
+        )
     where = {"category": category} if category else None
     results = collection.query(
         query_embeddings=[query_embedding],
@@ -198,6 +206,8 @@ def hybrid_retrieve(
     category: str | None = None,
     rerank_mode: str = "none",
     chunks_path: Path = DEFAULT_CHUNKS_PATH,
+    query_embedding: list[float] | None = None,
+    use_embedding_cache: bool = True,
 ) -> list[RetrievedChunk]:
     """Fuse dense Chroma and sparse BM25 candidates with reciprocal-rank fusion."""
     retrieval_k = max(top_k, candidate_k or top_k)
@@ -210,6 +220,8 @@ def hybrid_retrieve(
         candidate_k=retrieval_k,
         category=category,
         rerank_mode="none",
+        query_embedding=query_embedding,
+        use_embedding_cache=use_embedding_cache,
     )
     sparse = bm25_retrieve(query, top_k=retrieval_k, category=category, chunks_path=chunks_path)
     fused = reciprocal_rank_fusion([dense, sparse])
@@ -229,6 +241,7 @@ def planned_retrieve(
     rerank_mode: str = "none",
     retrieval_strategy: str = "dense",
     chunks_path: Path = DEFAULT_CHUNKS_PATH,
+    reuse_query_embeddings: bool = True,
 ) -> tuple[QueryPlan, list[RetrievedChunk]]:
     plan = plan_query(query, max_categories=max_categories)
     if manual_category:
@@ -240,6 +253,22 @@ def planned_retrieve(
             plan.warnings.append(f"adaptive top_k expanded from {top_k} to {adaptive_top_k} for aspect coverage")
             top_k = adaptive_top_k
         candidate_k = max(candidate_k, top_k * 2)
+
+    retrieval_queries = []
+    retrieval_queries.extend(
+        aspect.search_query or aspect.question
+        for aspect in plan.aspects
+    )
+    retrieval_queries.extend(plan.sub_queries)
+    unique_queries = list(dict.fromkeys(retrieval_queries))
+    embedding_by_query = (
+        {
+            query_text: embed_query(query_text, embedding_model, ollama_host)
+            for query_text in unique_queries
+        }
+        if reuse_query_embeddings
+        else {}
+    )
 
     retrieval_runs: list[list[RetrievedChunk]] = []
 
@@ -257,6 +286,8 @@ def planned_retrieve(
                 rerank_mode="none",
                 retrieval_strategy=retrieval_strategy,
                 chunks_path=chunks_path,
+                query_embedding=embedding_by_query.get(aspect_query),
+                use_embedding_cache=reuse_query_embeddings,
             )
         )
         for category in aspect.categories[:8]:
@@ -271,6 +302,8 @@ def planned_retrieve(
                     rerank_mode="none",
                     retrieval_strategy=retrieval_strategy,
                     chunks_path=chunks_path,
+                    query_embedding=embedding_by_query.get(aspect_query),
+                    use_embedding_cache=reuse_query_embeddings,
                 )
             )
         for run in aspect_runs:
@@ -290,6 +323,8 @@ def planned_retrieve(
                 rerank_mode="none",
                 retrieval_strategy=retrieval_strategy,
                 chunks_path=chunks_path,
+                query_embedding=embedding_by_query.get(sub_query),
+                use_embedding_cache=reuse_query_embeddings,
             )
         )
         for category in plan.category_filters:
@@ -304,6 +339,8 @@ def planned_retrieve(
                     rerank_mode="none",
                     retrieval_strategy=retrieval_strategy,
                     chunks_path=chunks_path,
+                    query_embedding=embedding_by_query.get(sub_query),
+                    use_embedding_cache=reuse_query_embeddings,
                 )
             )
 
@@ -333,6 +370,8 @@ def retrieve_with_strategy(
     rerank_mode: str = "none",
     retrieval_strategy: str = "dense",
     chunks_path: Path = DEFAULT_CHUNKS_PATH,
+    query_embedding: list[float] | None = None,
+    use_embedding_cache: bool = True,
 ) -> list[RetrievedChunk]:
     if retrieval_strategy == "dense":
         return direct_retrieve(
@@ -344,6 +383,8 @@ def retrieve_with_strategy(
             candidate_k=candidate_k,
             category=category,
             rerank_mode=rerank_mode,
+            query_embedding=query_embedding,
+            use_embedding_cache=use_embedding_cache,
         )
     if retrieval_strategy == "hybrid":
         return hybrid_retrieve(
@@ -356,6 +397,8 @@ def retrieve_with_strategy(
             category=category,
             rerank_mode=rerank_mode,
             chunks_path=chunks_path,
+            query_embedding=query_embedding,
+            use_embedding_cache=use_embedding_cache,
         )
     raise ValueError(f"Unsupported retrieval_strategy: {retrieval_strategy}")
 

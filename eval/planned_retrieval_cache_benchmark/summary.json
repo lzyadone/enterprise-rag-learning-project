@@ -1,0 +1,32 @@
+{
+  "cases": 8,
+  "top_k": 10,
+  "candidate_k": 10,
+  "optimization": "A/B: repeated embeddings versus one embedding per unique plan query",
+  "systems": [
+    {
+      "system": "planned_dense",
+      "cases": 8,
+      "baseline_median_seconds": 23.129,
+      "optimized_median_seconds": 6.029,
+      "median_speedup": 3.9537,
+      "same_order_cases": 8,
+      "same_set_cases": 8,
+      "avg_unique_embedding_queries": 5.5,
+      "avg_baseline_embedding_calls": 22.5,
+      "avg_optimized_embedding_calls": 5.5
+    },
+    {
+      "system": "planned_hybrid",
+      "cases": 8,
+      "baseline_median_seconds": 22.7814,
+      "optimized_median_seconds": 7.4995,
+      "median_speedup": 3.1281,
+      "same_order_cases": 8,
+      "same_set_cases": 8,
+      "avg_unique_embedding_queries": 5.5,
+      "avg_baseline_embedding_calls": 22.5,
+      "avg_optimized_embedding_calls": 5.5
+    }
+  ]
+}
