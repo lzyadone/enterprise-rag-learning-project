@@ -217,6 +217,7 @@ function renderPlan(data) {
     `<div class="kv">
       <b>requested mode</b><span>${escapeHtml(settings.requested_retrieval_mode || settings.retrieval_mode)}</span>
       <b>selected mode</b><span>${escapeHtml(settings.retrieval_mode)}</span>
+      <b>planned fusion</b><span>${escapeHtml(settings.planned_fusion_mode || "legacy")}</span>
       <b>channel</b><span>${escapeHtml(settings.retrieval_strategy || "dense")}</span>
       <b>effective query</b><span>${escapeHtml(data.effective_query)}</span>
       <b>provider</b><span>${escapeHtml(settings.llm_provider)}</span>

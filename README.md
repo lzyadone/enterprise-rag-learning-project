@@ -306,6 +306,8 @@ python experiments\28_auto_retrieval_routing\evaluate_router.py
 
 独立留出集上的 oracle 一致率为 `10/16`。这否定了“当前 auto 已经能够泛化”的假设，也暴露出 planned 查询扩展和覆盖选择会稀释原问题证据。Web 因此默认使用 `direct`；`auto` 和 `planned` 保留为实验模式，待 planned v2 在新的留出集上通过后再考虑恢复默认。
 
+planned v2 使用 original-query anchor、Weighted RRF、扩展总权重上限、重复 run 去除和最多两个覆盖槽位。在暴露问题的 16 题开发集上，它把 legacy planned 的 nDCG@10 从 `0.453` 提升到 `0.726`，接近 direct 的 `0.730`；最严重的 RAG 架构题从 `0.000` 修复到 `0.848`。但旧 8 题校准集上 v2 为 `0.552`，仍低于 legacy 的 `0.614`，所以 Web 只把手动 planned 分支升级为 anchored v2，默认路线继续保持 direct。
+
 ## 学习记录
 
 建议按顺序阅读这些阶段记录：
@@ -326,6 +328,7 @@ python experiments\28_auto_retrieval_routing\evaluate_router.py
 - `notes/40_planned_retrieval_embedding_cache.md`
 - `notes/41_automatic_retrieval_routing.md`
 - `notes/42_independent_routing_holdout.md`
+- `notes/43_anchored_planned_retrieval_v2.md`
 
 ## 适合作品集展示的点
 
@@ -340,8 +343,7 @@ python experiments\28_auto_retrieval_routing\evaluate_router.py
 - 给 Web 页面增加更清晰的“答案/来源/审计”展示。
 - 增加更多真实业务数据集，验证跨领域泛化。
 - 扩充 union benchmark 的 query 数量，并对模型严重分歧样本做独立人工复核。
-- 设计 planned v2：保留原问题锚点、降低通用扩展权重，并限制强制分类覆盖占位。
-- planned v2 只在开发集调参，再冻结一套新的 holdout v2 做最终验证。
+- 冻结一套新的 holdout v2，验证 anchored planned 和自动路由的真实泛化能力。
 - 并行执行 planned retrieval 中相互独立的子查询，继续降低复杂问题延迟。
 - 增加候选与重排结果缓存，降低 planned retrieval 的在线延迟。
 - 增加 GitHub Actions 或本地一键评测脚本。

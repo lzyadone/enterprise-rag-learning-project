@@ -122,6 +122,9 @@ MIN_ASPECT_SOURCES: dict[str, int] = {
 }
 
 DEFAULT_CHUNKS_PATH = Path(__file__).resolve().parents[1] / "data" / "processed" / "llm_rag_docs" / "chunks.jsonl"
+PLANNED_ANCHOR_WEIGHT = 2.0
+PLANNED_GLOBAL_EXPANSION_WEIGHT = 1.0
+PLANNED_FILTERED_EXPANSION_WEIGHT = 0.5
 
 
 @dataclass
@@ -138,6 +141,14 @@ class RetrievedChunk:
     rerank_score: float = 0.0
     rerank_reason: str = ""
     retrieval_channels: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class PlannedRunSpec:
+    query: str
+    category: str | None
+    aspect: str | None
+    group: str
 
 
 def direct_retrieve(
@@ -243,7 +254,27 @@ def planned_retrieve(
     chunks_path: Path = DEFAULT_CHUNKS_PATH,
     reuse_query_embeddings: bool = True,
     query_plan: QueryPlan | None = None,
+    fusion_mode: str = "legacy",
 ) -> tuple[QueryPlan, list[RetrievedChunk]]:
+    if fusion_mode == "anchored":
+        return anchored_planned_retrieve(
+            collection,
+            query,
+            embedding_model,
+            ollama_host,
+            top_k=top_k,
+            candidate_k=candidate_k,
+            max_categories=max_categories,
+            manual_category=manual_category,
+            rerank_mode=rerank_mode,
+            retrieval_strategy=retrieval_strategy,
+            chunks_path=chunks_path,
+            reuse_query_embeddings=reuse_query_embeddings,
+            query_plan=query_plan,
+        )
+    if fusion_mode != "legacy":
+        raise ValueError("fusion_mode must be legacy or anchored")
+
     plan = query_plan or plan_query(query, max_categories=max_categories)
     if manual_category:
         plan.category_filters = [manual_category]
@@ -360,6 +391,147 @@ def planned_retrieve(
     return plan, select_with_plan_coverage(ranked, top_k, plan)
 
 
+def anchored_planned_retrieve(
+    collection: chromadb.Collection,
+    query: str,
+    embedding_model: str,
+    ollama_host: str,
+    top_k: int = 5,
+    candidate_k: int = 8,
+    max_categories: int = 2,
+    manual_category: str | None = None,
+    rerank_mode: str = "none",
+    retrieval_strategy: str = "dense",
+    chunks_path: Path = DEFAULT_CHUNKS_PATH,
+    reuse_query_embeddings: bool = True,
+    query_plan: QueryPlan | None = None,
+) -> tuple[QueryPlan, list[RetrievedChunk]]:
+    """Retrieve with an original-query anchor and bounded expansion influence."""
+    plan = query_plan or plan_query(query, max_categories=max_categories)
+    anchor_candidate_k = candidate_k
+    if manual_category:
+        plan.category_filters = [manual_category]
+        plan.warnings.append("manual category override applied")
+    if plan.aspects:
+        adaptive_top_k = min(10, max(top_k, len(plan.aspects) * 2 + 4))
+        if adaptive_top_k > top_k:
+            plan.warnings.append(f"adaptive top_k expanded from {top_k} to {adaptive_top_k} for aspect coverage")
+            top_k = adaptive_top_k
+        candidate_k = max(candidate_k, top_k * 2)
+
+    specs = build_anchored_run_specs(query, plan)
+    unique_queries = list(dict.fromkeys(spec.query for spec in specs))
+    embedding_by_query = (
+        {
+            query_text: embed_query(query_text, embedding_model, ollama_host)
+            for query_text in unique_queries
+        }
+        if reuse_query_embeddings
+        else {}
+    )
+    weighted_runs: list[tuple[list[RetrievedChunk], float]] = []
+    weights = anchored_run_weights(specs)
+    for spec, weight in zip(specs, weights):
+        run_top_k = top_k if spec.group == "anchor" else candidate_k
+        run_candidate_k = anchor_candidate_k if spec.group == "anchor" else candidate_k
+        run = retrieve_with_strategy(
+            collection,
+            spec.query,
+            embedding_model,
+            ollama_host,
+            top_k=run_top_k,
+            candidate_k=run_candidate_k,
+            category=spec.category,
+            rerank_mode="none",
+            retrieval_strategy=retrieval_strategy,
+            chunks_path=chunks_path,
+            query_embedding=embedding_by_query.get(spec.query),
+            use_embedding_cache=reuse_query_embeddings,
+        )
+        if spec.aspect:
+            for item in run:
+                item.aspect = spec.aspect
+        weighted_runs.append((run, weight))
+
+    fused = reciprocal_rank_fusion(
+        [run for run, _ in weighted_runs],
+        weights=[weight for _, weight in weighted_runs],
+    )
+    rerank_pool = fused
+    coverage_slots = max(1, min(2, top_k // 4))
+    if rerank_mode == "cross_encoder":
+        rerank_pool_size = min(len(fused), max(candidate_k, top_k * 3))
+        rerank_pool = select_with_bounded_plan_coverage(
+            fused,
+            rerank_pool_size,
+            plan,
+            max_coverage_slots=coverage_slots,
+        )
+        if rerank_pool_size < len(fused):
+            plan.warnings.append(
+                f"cross-encoder pool limited from {len(fused)} to {rerank_pool_size} candidates"
+            )
+    prepare_model_residency(rerank_mode, embedding_model, ollama_host)
+    ranked = rerank(query, rerank_pool, len(rerank_pool), rerank_mode)
+    ranked = apply_plan_boosts(ranked, plan, max_boost=0.006)
+    plan.warnings.append(
+        f"anchored fusion used {len(specs)} deduplicated runs with {coverage_slots} coverage slots"
+    )
+    return plan, select_with_bounded_plan_coverage(
+        ranked,
+        top_k,
+        plan,
+        max_coverage_slots=coverage_slots,
+    )
+
+
+def build_anchored_run_specs(query: str, plan: QueryPlan) -> list[PlannedRunSpec]:
+    specs: list[PlannedRunSpec] = []
+    seen: set[tuple[str, str | None]] = set()
+
+    def add(query_text: str, category: str | None, aspect: str | None, group: str) -> None:
+        normalized = " ".join(query_text.split()).casefold()
+        key = (normalized, category)
+        if not normalized or key in seen:
+            return
+        seen.add(key)
+        specs.append(
+            PlannedRunSpec(
+                query=query_text.strip(),
+                category=category,
+                aspect=aspect,
+                group=group,
+            )
+        )
+
+    add(query, None, None, "anchor")
+    for category in plan.category_filters:
+        add(query, category, None, "filtered_expansion")
+    for aspect in plan.aspects:
+        aspect_query = aspect.search_query or aspect.question
+        add(aspect_query, None, aspect.name, "global_expansion")
+        for category in aspect.categories[:8]:
+            add(aspect_query, category, aspect.name, "filtered_expansion")
+    for sub_query in plan.sub_queries:
+        add(sub_query, None, None, "global_expansion")
+        for category in plan.category_filters:
+            add(sub_query, category, None, "filtered_expansion")
+    return specs
+
+
+def anchored_run_weights(specs: list[PlannedRunSpec]) -> list[float]:
+    group_totals = {
+        "anchor": PLANNED_ANCHOR_WEIGHT,
+        "global_expansion": PLANNED_GLOBAL_EXPANSION_WEIGHT,
+        "filtered_expansion": PLANNED_FILTERED_EXPANSION_WEIGHT,
+    }
+    counts = {
+        group: sum(1 for spec in specs if spec.group == group)
+        for group in group_totals
+    }
+    return [group_totals[spec.group] / counts[spec.group] for spec in specs]
+
+
 def retrieve_with_strategy(
     collection: chromadb.Collection,
     query: str,
@@ -424,7 +596,14 @@ def prepare_model_residency(rerank_mode: str, embedding_model: str, ollama_host:
     unload_embedding_model(embedding_model, ollama_host)
 
 
-def apply_plan_boosts(ranked: list[RetrievedChunk], plan: QueryPlan) -> list[RetrievedChunk]:
+def apply_plan_boosts(
+    ranked: list[RetrievedChunk],
+    plan: QueryPlan,
+    *,
+    max_boost: float = 0.24,
+) -> list[RetrievedChunk]:
+    if max_boost < 0:
+        raise ValueError("max_boost must be non-negative")
     if not plan.aspects:
         return ranked
 
@@ -444,7 +623,7 @@ def apply_plan_boosts(ranked: list[RetrievedChunk], plan: QueryPlan) -> list[Ret
             terms = ASPECT_EVIDENCE_TERMS.get(aspect_name, [])
             hits = sum(1 for term in terms if term in searchable)
             if hits:
-                boost += min(0.24, 0.04 * hits)
+                boost += min(max_boost, (max_boost / 6) * hits)
         if boost:
             item.score = round(float(item.score or 0.0) + boost, 6)
             item.rerank_score = round(float(item.rerank_score or 0.0) + boost, 6)
@@ -534,6 +713,50 @@ def select_with_plan_coverage(
             continue
         match = first_matching_category(ranked, category, selected_ids)
         add_selected(selected, selected_ids, match, top_k)
+
+    for item in ranked:
+        if len(selected) >= top_k:
+            break
+        add_selected(selected, selected_ids, item, top_k)
+
+    return selected
+
+
+def select_with_bounded_plan_coverage(
+    ranked: list[RetrievedChunk],
+    top_k: int,
+    plan: QueryPlan,
+    *,
+    max_coverage_slots: int,
+) -> list[RetrievedChunk]:
+    """Reserve only a small number of slots for plan coverage, then follow fused relevance."""
+    if top_k <= 0 or not ranked:
+        return []
+    if max_coverage_slots < 0:
+        raise ValueError("max_coverage_slots must be non-negative")
+
+    selected: list[RetrievedChunk] = [ranked[0]]
+    selected_ids = {ranked[0].chunk_id}
+    coverage_added = 0
+
+    for aspect in plan.aspects:
+        if coverage_added >= max_coverage_slots or len(selected) >= top_k:
+            break
+        preferred_categories = preferred_categories_for_aspect(aspect.name, aspect.categories)
+        match = first_matching_aspect_category(ranked, aspect.name, preferred_categories, selected_ids)
+        if not match:
+            match = first_matching_aspect(ranked, aspect.name, selected_ids)
+        if add_selected(selected, selected_ids, match, top_k):
+            coverage_added += 1
+
+    for category in priority_categories_for_plan(plan):
+        if coverage_added >= max_coverage_slots or len(selected) >= top_k:
+            break
+        if category in selected_categories(selected):
+            continue
+        match = first_matching_category(ranked, category, selected_ids)
+        if add_selected(selected, selected_ids, match, top_k):
+            coverage_added += 1
 
     for item in ranked:
         if len(selected) >= top_k:
@@ -706,12 +929,25 @@ def unpack_results(results: dict[str, Any], query: str, category: str | None) ->
     return rows
 
 
-def reciprocal_rank_fusion(runs: list[list[RetrievedChunk]], k: int = 60) -> list[RetrievedChunk]:
+def reciprocal_rank_fusion(
+    runs: list[list[RetrievedChunk]],
+    k: int = 60,
+    weights: list[float] | None = None,
+) -> list[RetrievedChunk]:
+    if k <= 0:
+        raise ValueError("k must be positive")
+    if weights is None:
+        weights = [1.0] * len(runs)
+    if len(weights) != len(runs):
+        raise ValueError("weights must have the same length as runs")
+    if any(weight < 0 for weight in weights):
+        raise ValueError("weights must be non-negative")
+
     fused: dict[str, RetrievedChunk] = {}
     scores: dict[str, float] = {}
-    for run in runs:
+    for run, weight in zip(runs, weights):
         for rank, item in enumerate(run, start=1):
-            scores[item.chunk_id] = scores.get(item.chunk_id, 0.0) + 1.0 / (k + rank)
+            scores[item.chunk_id] = scores.get(item.chunk_id, 0.0) + weight / (k + rank)
             previous = fused.get(item.chunk_id)
             previous_aspect = previous.aspect if previous else None
             merged_channels = sorted(set((previous.retrieval_channels if previous else []) + item.retrieval_channels))

@@ -140,6 +140,7 @@ class RAGRequestHandler(BaseHTTPRequestHandler):
                     "deepseek_key": bool(get_deepseek_api_key()),
                     "default_llm_provider": default_llm_provider(),
                     "default_retrieval_mode": default_retrieval_mode(),
+                    "planned_fusion_mode": default_planned_fusion_mode(),
                     "reranker": reranker_runtime_config(),
                     "long_memory": STATE.long_memory.stats(DEFAULT_NAMESPACE),
                 }
@@ -214,6 +215,7 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
     memory_namespace = str(payload.get("memory_namespace") or DEFAULT_NAMESPACE)
     llm_provider = str(payload.get("llm_provider") or default_llm_provider())
     requested_retrieval_mode = str(payload.get("retrieval_mode") or default_retrieval_mode())
+    planned_fusion_mode = str(payload.get("planned_fusion_mode") or default_planned_fusion_mode())
     retrieval_strategy = str(payload.get("retrieval_strategy") or "hybrid")
     rerank_mode = str(payload.get("rerank_mode") or "lexical")
     embedding_model = str(payload.get("embedding_model") or "bge-m3")
@@ -225,6 +227,8 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
     audit_answer = bool(payload.get("audit_answer", True))
     if requested_retrieval_mode not in {"auto", "direct", "planned"}:
         raise ValueError("retrieval_mode must be auto, direct, or planned")
+    if planned_fusion_mode not in {"legacy", "anchored"}:
+        raise ValueError("planned_fusion_mode must be legacy or anchored")
     if retrieval_strategy not in {"dense", "hybrid"}:
         raise ValueError("retrieval_strategy must be dense or hybrid")
 
@@ -280,6 +284,7 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
                 rerank_mode=rerank_mode,
                 retrieval_strategy=retrieval_strategy,
                 query_plan=routing_plan,
+                fusion_mode=planned_fusion_mode,
             )
 
     short_memory_context = memory.context() if use_memory else ""
@@ -374,6 +379,7 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
             "llm_provider": llm_provider,
             "requested_retrieval_mode": requested_retrieval_mode,
             "retrieval_mode": selected_retrieval_mode,
+            "planned_fusion_mode": planned_fusion_mode,
             "retrieval_strategy": retrieval_strategy,
             "rerank_mode": rerank_mode,
             "reranker": reranker_runtime_config() if rerank_mode == "cross_encoder" else None,
@@ -418,6 +424,11 @@ def default_llm_provider() -> str:
 def default_retrieval_mode() -> str:
     configured = os.getenv("RAG_DEFAULT_RETRIEVAL_MODE", "direct").strip().casefold()
     return configured if configured in {"auto", "direct", "planned"} else "direct"
+
+
+def default_planned_fusion_mode() -> str:
+    configured = os.getenv("RAG_PLANNED_FUSION_MODE", "anchored").strip().casefold()
+    return configured if configured in {"legacy", "anchored"} else "anchored"
 
 
 def build_memory_context(short_memory_context: str, long_memory_hits: list[Any]) -> str:

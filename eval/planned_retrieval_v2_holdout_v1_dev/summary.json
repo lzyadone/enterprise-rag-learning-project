@@ -1,0 +1,31 @@
+{
+  "status": "complete",
+  "evaluation_role": "development/calibration; not an independent holdout",
+  "cases": 16,
+  "qrels": "eval\\benchmarks\\rag_routing_holdout_v1\\qrels_llm.jsonl",
+  "relevant_threshold": 2,
+  "planned_v2_median_seconds": 4.7743,
+  "systems": [
+    {
+      "system": "direct_hybrid",
+      "avg_recall_at_10": 0.7972,
+      "avg_precision_at_10": 0.4875,
+      "mrr_at_10": 0.8125,
+      "avg_ndcg_at_10": 0.7299
+    },
+    {
+      "system": "planned_hybrid",
+      "avg_recall_at_10": 0.4131,
+      "avg_precision_at_10": 0.2812,
+      "mrr_at_10": 0.4976,
+      "avg_ndcg_at_10": 0.4531
+    },
+    {
+      "system": "planned_v2_hybrid",
+      "avg_recall_at_10": 0.8035,
+      "avg_precision_at_10": 0.4938,
+      "mrr_at_10": 0.8229,
+      "avg_ndcg_at_10": 0.7263
+    }
+  ]
+}
