@@ -82,8 +82,28 @@ auto 在 compound 题上出现小幅收益，说明“复杂题可能值得规�
 
 - 协议：`eval/benchmarks/rag_routing_holdout_v2/README.md`
 - 问题集：`eval/datasets/rag_routing_holdout_v2.jsonl`
-- 匿名候选：`eval/routing_holdout_v2/candidate_pools.jsonl`
 - 系统排名：`eval/routing_holdout_v2/pool_manifest.jsonl`
 - 完整标签：`eval/benchmarks/rag_routing_holdout_v2/qrels_llm.jsonl`
-- 路由结果：`eval/auto_retrieval_routing_holdout_v2/results.jsonl`
 - 汇总：`eval/auto_retrieval_routing_holdout_v2/summary.md`
+
+仓库的统一 `.gitignore` 会排除候选正文、逐题结果和 system run 缓存，避免重复提交可再生的大文件。clone 后先重建匿名候选：
+
+```powershell
+python experiments\26_retrieval_pooling\build_union_pool.py `
+  --dataset eval\datasets\rag_routing_holdout_v2.jsonl `
+  --systems direct_hybrid planned_v2_hybrid `
+  --all-dataset-cases --no-inherit-qrels --pool-depth 10 `
+  --output-dir eval\routing_holdout_v2 --force
+```
+
+然后使用仓库中已经冻结的完整 qrels 重算路由结果，不需要再次调用 DeepSeek：
+
+```powershell
+python experiments\28_auto_retrieval_routing\evaluate_router.py `
+  --manifest eval\routing_holdout_v2\pool_manifest.jsonl `
+  --candidate-pools eval\routing_holdout_v2\candidate_pools.jsonl `
+  --qrels eval\benchmarks\rag_routing_holdout_v2\qrels_llm.jsonl `
+  --latency-results eval\routing_holdout_v2\no_latency_cache.jsonl `
+  --direct-system direct_hybrid --planned-system planned_v2_hybrid `
+  --evaluation-role holdout --output-dir eval\auto_retrieval_routing_holdout_v2
+```
