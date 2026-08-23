@@ -41,6 +41,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--summary", type=Path, default=DEFAULT_SUMMARY)
     parser.add_argument("--human-qrels", type=Path, default=DEFAULT_HUMAN_QRELS)
+    parser.add_argument(
+        "--skip-human-audit",
+        action="store_true",
+        help="Skip agreement calculation when the fresh benchmark has no human labels yet.",
+    )
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--max-document-chars", type=int, default=3200)
     parser.add_argument("--batch-size", type=int, default=10)
@@ -115,7 +120,12 @@ def main() -> None:
     if progress["labeled"] != progress["total"]:
         raise RuntimeError(f"LLM qrels are incomplete: {progress}")
     rows = store.rows()
-    human_overlap = compare_with_human(rows, args.human_qrels)
+    human_overlap = (
+        {"available": False, **agreement_summary([])}
+        if args.skip_human_audit
+        else {"available": True, **compare_with_human(rows, args.human_qrels)}
+    )
+    total = progress["total"]
     summary = {
         "model": args.model,
         "total": progress["total"],
@@ -128,11 +138,11 @@ def main() -> None:
         },
         "human_overlap_audit": human_overlap,
         "provenance": (
-            "All 224 labels were judged in the deterministically shuffled union pool "
+            f"All {total} labels were judged in the deterministically shuffled union pool "
             "with retrieval ranks, scores, channels, and plans hidden. Human qrels remain separate."
             if args.rejudge_all
-            else "All 224 labels use the same blind DeepSeek judge. The first 128 are reused "
-            "from the earlier LLM audit; human qrels remain separate."
+            else f"All {total} labels use the same blind DeepSeek judge. Eligible labels may be "
+            "reused from the earlier LLM audit; human qrels remain separate."
         ),
     }
     write_json(args.summary, summary)

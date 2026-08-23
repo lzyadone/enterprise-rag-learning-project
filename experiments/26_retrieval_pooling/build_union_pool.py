@@ -57,6 +57,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--embedding-model", default="bge-m3")
     parser.add_argument("--ollama-host", default="http://127.0.0.1:11434")
     parser.add_argument("--pool-depth", type=int, default=10)
+    parser.add_argument(
+        "--systems",
+        nargs="+",
+        choices=SYSTEMS,
+        default=SYSTEMS,
+        help="Candidate generators to include in the union pool.",
+    )
+    parser.add_argument(
+        "--all-dataset-cases",
+        action="store_true",
+        help="Use every dataset row in file order instead of selecting cases from source qrels.",
+    )
+    parser.add_argument(
+        "--no-inherit-qrels",
+        action="store_true",
+        help="Build a fresh pool without importing or writing any existing judgments.",
+    )
     parser.add_argument("--source-qrels", type=Path, default=DEFAULT_SOURCE_QRELS)
     parser.add_argument("--target-qrels", type=Path, default=DEFAULT_TARGET_QRELS)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
@@ -69,11 +86,21 @@ def main() -> None:
     args = parse_args()
     if args.pool_depth <= 0:
         raise ValueError("pool-depth must be positive")
+    systems = list(dict.fromkeys(args.systems))
 
-    source_qrels = load_jsonl(args.source_qrels)
-    target_qrels = load_jsonl(args.target_qrels) if args.target_qrels.exists() else []
-    qrel_query_ids = list(dict.fromkeys(str(row["query_id"]) for row in source_qrels))
-    cases = load_cases(args.dataset, qrel_query_ids)
+    source_qrels = [] if args.no_inherit_qrels else load_jsonl(args.source_qrels)
+    target_qrels = (
+        load_jsonl(args.target_qrels)
+        if not args.no_inherit_qrels and args.target_qrels.exists()
+        else []
+    )
+    if args.all_dataset_cases:
+        cases = load_all_cases(args.dataset)
+    else:
+        qrel_query_ids = list(dict.fromkeys(str(row["query_id"]) for row in source_qrels))
+        if not qrel_query_ids:
+            raise ValueError("source qrels are empty; pass --all-dataset-cases for a fresh dataset")
+        cases = load_cases(args.dataset, qrel_query_ids)
     chunk_candidates = load_chunk_candidates(args.chunks)
     legacy_rows = merge_qrel_rows(source_qrels, target_qrels)
     legacy_by_query = legacy_candidates_by_query(legacy_rows, chunk_candidates)
@@ -86,14 +113,14 @@ def main() -> None:
     collection = client.get_collection(name=args.collection)
     try:
         for case_index, case in enumerate(cases, start=1):
-            for system in SYSTEMS:
+            for system in systems:
                 key = (str(case["id"]), system)
                 if key in cache:
                     print(f"[{case_index}/{len(cases)}] {case['id']} {system}: reused", flush=True)
                     continue
                 record = run_system(collection, case, system, args)
                 cache[key] = record
-                write_run_cache(cache_path, cache, cases)
+                write_run_cache(cache_path, cache, cases, systems)
                 print(
                     f"[{case_index}/{len(cases)}] {case['id']} {system}: "
                     f"{len(record['candidates'])} candidates in {record['seconds']:.2f}s",
@@ -110,14 +137,15 @@ def main() -> None:
         case_id = str(case["id"])
         rankings = {
             system: cache[(case_id, system)]["candidates"]
-            for system in SYSTEMS
+            for system in systems
         }
         pooled, provenance = pool_rankings(
             case_id,
             rankings,
             legacy_by_query.get(case_id, []),
         )
-        plan = cache[(case_id, "planned_hybrid")].get("plan")
+        planned_system = next((system for system in systems if system.startswith("planned_")), None)
+        plan = cache[(case_id, planned_system)].get("plan") if planned_system else None
         union_pools.append(
             {
                 "case_id": case_id,
@@ -138,7 +166,7 @@ def main() -> None:
                             for candidate in cache[(case_id, system)]["candidates"]
                         ],
                     }
-                    for system in SYSTEMS
+                    for system in systems
                 },
                 "pooled_candidate_count": len(pooled),
                 "provenance": provenance,
@@ -156,15 +184,17 @@ def main() -> None:
         for candidate in pool["candidates"]
     ]
     inherited = inherit_qrels(legacy_rows, valid_pair_order)
-    write_jsonl(args.target_qrels, inherited)
-    summary = build_summary(args, manifests, inherited)
+    if not args.no_inherit_qrels:
+        write_jsonl(args.target_qrels, inherited)
+    summary = build_summary(args, manifests, inherited, systems)
     write_json(args.output_dir / "summary.json", summary)
     (args.output_dir / "summary.md").write_text(summary_markdown(summary), encoding="utf-8")
 
     print("\n=== Pool Summary ===")
     print(json.dumps(summary["judgments"], ensure_ascii=False, indent=2))
     print(f"candidate pools: {portable_path(candidate_pool_path)}")
-    print(f"target qrels: {portable_path(args.target_qrels)}")
+    if not args.no_inherit_qrels:
+        print(f"target qrels: {portable_path(args.target_qrels)}")
 
 
 def run_system(
@@ -227,6 +257,18 @@ def load_cases(path: Path, ordered_ids: list[str]) -> list[dict[str, Any]]:
     return [by_id[query_id] for query_id in ordered_ids]
 
 
+def load_all_cases(path: Path) -> list[dict[str, Any]]:
+    cases = load_jsonl(path)
+    ids = [str(row.get("id") or "") for row in cases]
+    if any(not case_id for case_id in ids):
+        raise ValueError("every dataset row must contain a non-empty id")
+    if len(ids) != len(set(ids)):
+        raise ValueError("dataset case ids must be unique")
+    if any(not str(row.get("question") or "").strip() for row in cases):
+        raise ValueError("every dataset row must contain a non-empty question")
+    return cases
+
+
 def load_chunk_candidates(path: Path) -> dict[str, dict[str, Any]]:
     candidates: dict[str, dict[str, Any]] = {}
     for record in load_jsonl(path):
@@ -269,9 +311,10 @@ def write_run_cache(
     path: Path,
     cache: dict[tuple[str, str], dict[str, Any]],
     cases: list[dict[str, Any]],
+    systems: list[str],
 ) -> None:
     case_order = {str(case["id"]): index for index, case in enumerate(cases)}
-    system_order = {system: index for index, system in enumerate(SYSTEMS)}
+    system_order = {system: index for index, system in enumerate(systems)}
     rows = sorted(
         cache.values(),
         key=lambda row: (case_order[str(row["case_id"])], system_order[str(row["system"])]),
@@ -283,10 +326,11 @@ def build_summary(
     args: argparse.Namespace,
     manifests: list[dict[str, Any]],
     inherited: list[dict[str, Any]],
+    systems: list[str],
 ) -> dict[str, Any]:
     pool_sizes = [int(row["pooled_candidate_count"]) for row in manifests]
     total_pairs = sum(pool_sizes)
-    system_unique = {system: 0 for system in SYSTEMS}
+    system_unique = {system: 0 for system in systems}
     legacy_only = 0
     for manifest in manifests:
         for item in manifest["provenance"]:
@@ -299,7 +343,7 @@ def build_summary(
         "dataset": portable_path(args.dataset),
         "collection": args.collection,
         "pool_depth_per_system": args.pool_depth,
-        "systems": SYSTEMS,
+        "systems": systems,
         "cases": len(manifests),
         "pool": {
             "total_query_chunk_pairs": total_pairs,
@@ -317,7 +361,7 @@ def build_summary(
         },
         "candidate_pools": portable_path(args.output_dir / "candidate_pools.jsonl"),
         "manifest": portable_path(args.output_dir / "pool_manifest.jsonl"),
-        "qrels": portable_path(args.target_qrels),
+        "qrels": None if args.no_inherit_qrels else portable_path(args.target_qrels),
     }
 
 
@@ -327,7 +371,7 @@ def summary_markdown(summary: dict[str, Any]) -> str:
     lines = [
         "# Retrieval Union Pool V1",
         "",
-        "This pool combines five retrieval systems and deduplicates candidates per query.",
+        f"This pool combines {len(summary['systems'])} retrieval systems and deduplicates candidates per query.",
         "Candidate order is deterministically shuffled before labeling so system rank is hidden.",
         "",
         "## Setup",

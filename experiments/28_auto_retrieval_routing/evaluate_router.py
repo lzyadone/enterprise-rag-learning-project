@@ -35,6 +35,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--latency-results", type=Path, default=DEFAULT_LATENCY_RESULTS)
     parser.add_argument("--latency-budget-ms", type=int, default=12000)
     parser.add_argument("--relevant-threshold", type=int, default=2)
+    parser.add_argument(
+        "--evaluation-role",
+        choices=("calibration", "holdout"),
+        default="calibration",
+        help="Declare whether routing rules have already seen this question set.",
+    )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     return parser.parse_args()
 
@@ -187,8 +193,9 @@ def build_summary(
         mode: sum(1 for record in records if record["decision"]["selected_mode"] == mode)
         for mode in ("direct", "planned")
     }
+    is_holdout = args.evaluation_role == "holdout"
     return {
-        "evaluation_role": "router calibration set; not an independent holdout",
+        "evaluation_role": args.evaluation_role,
         "cases": len(records),
         "qrels": portable_path(args.qrels),
         "relevant_threshold": args.relevant_threshold,
@@ -199,8 +206,12 @@ def build_summary(
         "oracle_agreement_rate": round(oracle_agreement / len(records), 4),
         "systems": rows,
         "boundary": (
-            "The same eight queries informed the initial routing threshold, so oracle agreement is "
-            "a calibration result. Generalization requires a larger, independently held-out query set."
+            "Questions were frozen before candidate generation and were not used to tune the current "
+            "routing threshold. LLM relevance labels are an independent holdout signal, but a future "
+            "human audit is still required."
+            if is_holdout
+            else "These queries informed the initial routing threshold, so oracle agreement is a "
+            "calibration result rather than evidence of generalization."
         ),
     }
 
@@ -211,11 +222,16 @@ def mean(rows: list[dict[str, float]], key: str) -> float:
 
 def summary_markdown(summary: dict[str, Any], records: list[dict[str, Any]]) -> str:
     lines = [
-        "# Automatic Retrieval Routing Calibration",
+        (
+            "# Automatic Retrieval Routing Holdout"
+            if summary["evaluation_role"] == "holdout"
+            else "# Automatic Retrieval Routing Calibration"
+        ),
         "",
         "## Setup",
         "",
         f"- cases: {summary['cases']}",
+        f"- evaluation role: {summary['evaluation_role']}",
         f"- qrels: {summary['qrels']}",
         f"- latency budget: {summary['latency_budget_ms']} ms",
         f"- route counts: {summary['route_counts']}",
