@@ -1,0 +1,44 @@
+{
+  "evaluation_role": "holdout",
+  "cases": 16,
+  "qrels": "eval\\benchmarks\\rag_routing_holdout_v1\\qrels_llm.jsonl",
+  "relevant_threshold": 2,
+  "latency_budget_ms": 12000,
+  "used_optimized_planned_latency": false,
+  "route_counts": {
+    "direct": 9,
+    "planned": 7
+  },
+  "oracle_agreement_cases": 10,
+  "oracle_agreement_rate": 0.625,
+  "systems": [
+    {
+      "system": "direct_hybrid",
+      "avg_recall_at_10": 0.862,
+      "avg_precision_at_10": 0.4875,
+      "mrr_at_10": 0.8125,
+      "avg_ndcg_at_10": 0.7502,
+      "avg_seconds": 1.8912,
+      "median_seconds": 0.832
+    },
+    {
+      "system": "planned_hybrid",
+      "avg_recall_at_10": 0.4478,
+      "avg_precision_at_10": 0.2812,
+      "mrr_at_10": 0.4976,
+      "avg_ndcg_at_10": 0.4647,
+      "avg_seconds": 4.5652,
+      "median_seconds": 4.6162
+    },
+    {
+      "system": "auto",
+      "avg_recall_at_10": 0.6731,
+      "avg_precision_at_10": 0.3688,
+      "mrr_at_10": 0.6522,
+      "avg_ndcg_at_10": 0.5964,
+      "avg_seconds": 2.576,
+      "median_seconds": 1.3169
+    }
+  ],
+  "boundary": "Questions were frozen before candidate generation and were not used to tune the current routing threshold. LLM relevance labels are an independent holdout signal, but a future human audit is still required."
+}

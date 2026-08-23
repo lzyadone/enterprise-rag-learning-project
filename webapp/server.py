@@ -139,6 +139,7 @@ class RAGRequestHandler(BaseHTTPRequestHandler):
                     "indexed_count": STATE.collection.count(),
                     "deepseek_key": bool(get_deepseek_api_key()),
                     "default_llm_provider": default_llm_provider(),
+                    "default_retrieval_mode": default_retrieval_mode(),
                     "reranker": reranker_runtime_config(),
                     "long_memory": STATE.long_memory.stats(DEFAULT_NAMESPACE),
                 }
@@ -212,7 +213,7 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
     use_long_memory = bool(payload.get("use_long_memory", use_memory))
     memory_namespace = str(payload.get("memory_namespace") or DEFAULT_NAMESPACE)
     llm_provider = str(payload.get("llm_provider") or default_llm_provider())
-    requested_retrieval_mode = str(payload.get("retrieval_mode") or "auto")
+    requested_retrieval_mode = str(payload.get("retrieval_mode") or default_retrieval_mode())
     retrieval_strategy = str(payload.get("retrieval_strategy") or "hybrid")
     rerank_mode = str(payload.get("rerank_mode") or "lexical")
     embedding_model = str(payload.get("embedding_model") or "bge-m3")
@@ -412,6 +413,11 @@ def default_llm_provider() -> str:
             return "ollama"
         return configured
     return "deepseek" if get_deepseek_api_key() else "ollama"
+
+
+def default_retrieval_mode() -> str:
+    configured = os.getenv("RAG_DEFAULT_RETRIEVAL_MODE", "direct").strip().casefold()
+    return configured if configured in {"auto", "direct", "planned"} else "direct"
 
 
 def build_memory_context(short_memory_context: str, long_memory_hits: list[Any]) -> str:
