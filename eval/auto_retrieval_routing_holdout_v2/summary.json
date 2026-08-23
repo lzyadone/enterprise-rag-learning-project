@@ -1,0 +1,95 @@
+{
+  "evaluation_role": "holdout",
+  "cases": 20,
+  "qrels": "eval\\benchmarks\\rag_routing_holdout_v2\\qrels_llm.jsonl",
+  "relevant_threshold": 2,
+  "latency_budget_ms": 12000,
+  "used_optimized_planned_latency": false,
+  "route_counts": {
+    "direct": 7,
+    "planned": 13
+  },
+  "direct_system": "direct_hybrid",
+  "planned_system": "planned_v2_hybrid",
+  "oracle_agreement_cases": 11,
+  "oracle_agreement_rate": 0.55,
+  "systems": [
+    {
+      "system": "direct_hybrid",
+      "avg_recall_at_10": 0.9733,
+      "avg_precision_at_10": 0.48,
+      "mrr_at_10": 0.8,
+      "avg_ndcg_at_10": 0.825,
+      "avg_seconds": 2.2987,
+      "median_seconds": 1.4812
+    },
+    {
+      "system": "planned_v2_hybrid",
+      "avg_recall_at_10": 0.955,
+      "avg_precision_at_10": 0.475,
+      "mrr_at_10": 0.7017,
+      "avg_ndcg_at_10": 0.7518,
+      "avg_seconds": 5.1885,
+      "median_seconds": 4.9462
+    },
+    {
+      "system": "auto",
+      "avg_recall_at_10": 0.98,
+      "avg_precision_at_10": 0.48,
+      "mrr_at_10": 0.825,
+      "avg_ndcg_at_10": 0.8043,
+      "avg_seconds": 3.9875,
+      "median_seconds": 4.0519
+    }
+  ],
+  "boundary": "Questions were frozen before candidate generation and were not used to tune the current routing threshold. LLM relevance labels are an independent holdout signal, but a future human audit is still required.",
+  "acceptance": {
+    "passed": false,
+    "checks": [
+      {
+        "name": "auto_ndcg_noninferior",
+        "passed": false,
+        "actual": 0.8043,
+        "required": 0.805
+      },
+      {
+        "name": "auto_recall_noninferior",
+        "passed": true,
+        "actual": 0.98,
+        "required": 0.9533
+      },
+      {
+        "name": "auto_mrr_noninferior",
+        "passed": true,
+        "actual": 0.825,
+        "required": 0.75
+      },
+      {
+        "name": "oracle_agreement",
+        "passed": false,
+        "actual": 0.55,
+        "required": 0.75
+      },
+      {
+        "name": "planned_route_worst_case",
+        "passed": true,
+        "actual": 0,
+        "required": 0
+      },
+      {
+        "name": "median_latency_within_budget",
+        "passed": true,
+        "actual": 4.0519,
+        "required": 12.0
+      }
+    ],
+    "harmful_planned_cases": [],
+    "thresholds": {
+      "quality_margin": 0.02,
+      "mrr_margin": 0.05,
+      "oracle_agreement_min": 0.75,
+      "max_planned_regret": 0.25,
+      "latency_budget_ms": 12000
+    }
+  }
+}

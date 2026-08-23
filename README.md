@@ -308,6 +308,16 @@ python experiments\28_auto_retrieval_routing\evaluate_router.py
 
 planned v2 使用 original-query anchor、Weighted RRF、扩展总权重上限、重复 run 去除和最多两个覆盖槽位。在暴露问题的 16 题开发集上，它把 legacy planned 的 nDCG@10 从 `0.453` 提升到 `0.726`，接近 direct 的 `0.730`；最严重的 RAG 架构题从 `0.000` 修复到 `0.848`。但旧 8 题校准集上 v2 为 `0.552`，仍低于 legacy 的 `0.614`，所以 Web 只把手动 planned 分支升级为 anchored v2，默认路线继续保持 direct。
 
+最后在候选生成前冻结 20 道 holdout v2 问题和 6 项通过标准，再对 direct 与 anchored v2 的 217 个匿名候选进行 DeepSeek 全量盲标：
+
+| system | Recall@10 | MRR@10 | nDCG@10 | 中位耗时 |
+|---|---:|---:|---:|---:|
+| always direct hybrid | 0.973 | 0.800 | **0.825** | **1.48s** |
+| always planned v2 hybrid | 0.955 | 0.702 | 0.752 | 4.95s |
+| auto | **0.980** | **0.825** | 0.804 | 4.05s |
+
+auto 通过了 Recall、MRR、最坏样例和延迟门槛，但 nDCG 非劣门槛差 `0.0007`，oracle 一致率为 `11/20`，低于预注册的 75%。分层后，auto 在 compound 题上优于 direct（`0.818` 对 `0.810`），但 focused 题因过度规划而退化（`0.791` 对 `0.840`）。因此默认继续使用 `direct`，auto 不进入发布候选；这套 holdout 不再用于调参。
+
 ## 学习记录
 
 建议按顺序阅读这些阶段记录：
@@ -329,6 +339,7 @@ planned v2 使用 original-query anchor、Weighted RRF、扩展总权重上限�
 - `notes/41_automatic_retrieval_routing.md`
 - `notes/42_independent_routing_holdout.md`
 - `notes/43_anchored_planned_retrieval_v2.md`
+- `notes/44_routing_holdout_v2_release_decision.md`
 
 ## 适合作品集展示的点
 
@@ -343,7 +354,8 @@ planned v2 使用 original-query anchor、Weighted RRF、扩展总权重上限�
 - 给 Web 页面增加更清晰的“答案/来源/审计”展示。
 - 增加更多真实业务数据集，验证跨领域泛化。
 - 扩充 union benchmark 的 query 数量，并对模型严重分歧样本做独立人工复核。
-- 冻结一套新的 holdout v2，验证 anchored planned 和自动路由的真实泛化能力。
+- 从真实用户问题或单独开发集研究 focused 题过度路由，不能用 holdout v2 调阈值。
+- 对 holdout v2 做少量独立人工复核，确认 LLM 盲标结论没有系统性偏差。
 - 并行执行 planned retrieval 中相互独立的子查询，继续降低复杂问题延迟。
 - 增加候选与重排结果缓存，降低 planned retrieval 的在线延迟。
 - 增加 GitHub Actions 或本地一键评测脚本。
