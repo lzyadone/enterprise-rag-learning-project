@@ -13,7 +13,7 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.query_planning import plan_query  # noqa: E402
+from src.query_planning import plan_query, plan_query_v3  # noqa: E402
 from src.retrieval_judgments import load_candidate_pools, load_complete_qrels  # noqa: E402
 from src.retrieval_metrics import evaluate_retrieval_ranking  # noqa: E402
 from src.retrieval_routing import route_retrieval  # noqa: E402
@@ -46,6 +46,12 @@ def parse_args() -> argparse.Namespace:
         default="calibration",
         help="Declare whether routing rules have already seen this question set.",
     )
+    parser.add_argument(
+        "--planner-version",
+        choices=("legacy", "conservative"),
+        default="legacy",
+        help="Planner shape used by the automatic routing decision.",
+    )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     return parser.parse_args()
 
@@ -65,7 +71,11 @@ def main() -> None:
     for manifest in manifests:
         case_id = str(manifest["case_id"])
         question = str(manifest["question"])
-        plan = plan_query(question)
+        plan = (
+            plan_query_v3(question)
+            if args.planner_version == "conservative"
+            else plan_query(question)
+        )
         decision = route_retrieval(
             plan,
             requested_mode="auto",
@@ -196,10 +206,15 @@ def empty_ranking_metrics() -> dict[str, float]:
 def load_optimized_latency(path: Path) -> dict[tuple[str, str], float]:
     if not path.exists():
         return {}
-    return {
-        (str(row["case_id"]), str(row["system"])): float(row["optimized_seconds"])
-        for row in load_jsonl(path)
-    }
+    latency: dict[tuple[str, str], float] = {}
+    for row in load_jsonl(path):
+        case_id = str(row["case_id"])
+        if isinstance(row.get("systems"), dict):
+            for system, run in row["systems"].items():
+                latency[(case_id, str(system))] = float(run["seconds"])
+        else:
+            latency[(case_id, str(row["system"]))] = float(row["optimized_seconds"])
+    return latency
 
 
 def system_latency_seconds(
@@ -252,6 +267,7 @@ def build_summary(
     is_development = args.evaluation_role == "development"
     summary = {
         "evaluation_role": args.evaluation_role,
+        "planner_version": args.planner_version,
         "cases": len(records),
         "evaluable_cases": len(evaluable_records),
         "coverage_gap_cases": len(records) - len(evaluable_records),
@@ -384,6 +400,7 @@ def summary_markdown(summary: dict[str, Any], records: list[dict[str, Any]]) -> 
         f"- candidate-pool coverage gaps: {summary['coverage_gap_cases']}",
         f"- evaluable pool rate: {summary['evaluable_pool_rate']:.1%}",
         f"- evaluation role: {summary['evaluation_role']}",
+        f"- routing planner: {summary['planner_version']}",
         f"- qrels: {summary['qrels']}",
         f"- latency budget: {summary['latency_budget_ms']} ms",
         f"- direct system: {summary['direct_system']}",

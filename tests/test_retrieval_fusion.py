@@ -6,11 +6,16 @@ from src.retrieval import (
     PLANNED_ANCHOR_WEIGHT,
     PLANNED_FILTERED_EXPANSION_WEIGHT,
     PLANNED_GLOBAL_EXPANSION_WEIGHT,
+    V3_ANCHOR_WEIGHT,
+    V3_FILTERED_EXPANSION_WEIGHT,
+    V3_GLOBAL_EXPANSION_WEIGHT,
     RetrievedChunk,
     apply_plan_boosts,
     anchored_planned_retrieve,
     anchored_run_weights,
     build_anchored_run_specs,
+    build_conservative_run_specs,
+    conservative_run_weights,
     reciprocal_rank_fusion,
     select_with_bounded_plan_coverage,
 )
@@ -137,6 +142,47 @@ class RetrievalFusionTest(unittest.TestCase):
         self.assertAlmostEqual(PLANNED_ANCHOR_WEIGHT, totals["anchor"])
         self.assertAlmostEqual(PLANNED_GLOBAL_EXPANSION_WEIGHT, totals["global_expansion"])
         self.assertAlmostEqual(PLANNED_FILTERED_EXPANSION_WEIGHT, totals["filtered_expansion"])
+
+    def test_conservative_specs_do_not_expand_single_aspect(self) -> None:
+        plan = QueryPlan(
+            original_query="specific product question",
+            rewritten_query="specific product question",
+            intent="answer",
+            category_filters=["vector db", "retrieval"],
+            sub_queries=["specific product question"],
+            aspects=[QueryAspect("evaluation", "evaluate")],
+        )
+
+        specs = build_conservative_run_specs("specific product question", plan)
+
+        self.assertEqual(1, len(specs))
+        self.assertEqual("anchor", specs[0].group)
+
+    def test_conservative_expansion_has_stronger_anchor_and_bounded_fanout(self) -> None:
+        query = "original entity-rich question"
+        plan = QueryPlan(
+            original_query=query,
+            rewritten_query=query,
+            intent="answer",
+            category_filters=["ingestion", "indexing"],
+            aspects=[
+                QueryAspect("identity", "id", f"{query} focus identity", ["ingestion"]),
+                QueryAspect("cache", "cache", f"{query} focus cache", ["ingestion"]),
+            ],
+        )
+
+        specs = build_conservative_run_specs(query, plan)
+        weights = conservative_run_weights(specs)
+        totals = {
+            group: sum(weight for spec, weight in zip(specs, weights) if spec.group == group)
+            for group in {spec.group for spec in specs}
+        }
+
+        self.assertLessEqual(len(specs), 7)
+        self.assertAlmostEqual(V3_ANCHOR_WEIGHT, totals["anchor"])
+        self.assertAlmostEqual(V3_GLOBAL_EXPANSION_WEIGHT, totals["global_expansion"])
+        self.assertAlmostEqual(V3_FILTERED_EXPANSION_WEIGHT, totals["filtered_expansion"])
+        self.assertTrue(all(query in spec.query for spec in specs))
 
     def test_bounded_coverage_only_promotes_configured_slots(self) -> None:
         plan = QueryPlan(

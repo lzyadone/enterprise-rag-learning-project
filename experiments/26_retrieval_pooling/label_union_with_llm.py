@@ -71,10 +71,15 @@ def main() -> None:
     ]
     valid_pairs = set(pair_order)
     judgments = {} if args.force else load_qrels(args.output, valid_pairs)
+    existing_output_labels = len(judgments)
+    seeded_prior_labels = 0
+    newly_judged_labels = 0
     if not args.rejudge_all:
         seeded = seed_from_audit(args.seed_audit, args.model, valid_pairs)
         for pair, row in seeded.items():
-            judgments.setdefault(pair, row)
+            if pair not in judgments:
+                judgments[pair] = row
+                seeded_prior_labels += 1
 
     for index, pool in enumerate(pools, start=1):
         query_id = str(pool["case_id"])
@@ -106,6 +111,7 @@ def main() -> None:
                     "updated_at": timestamp,
                 }
             labeled_for_query += len(model_rows)
+            newly_judged_labels += len(model_rows)
             write_ordered_qrels(args.output, judgments, pair_order)
             print(
                 f"[{index}/{len(pools)}] {query_id}: batch "
@@ -129,8 +135,17 @@ def main() -> None:
     summary = {
         "model": args.model,
         "total": progress["total"],
+        "label_sources": {
+            "existing_output": existing_output_labels,
+            "seeded_prior_audit": seeded_prior_labels,
+            "newly_judged": newly_judged_labels,
+        },
         "judging_mode": (
-            "full_shuffled_union" if args.rejudge_all else "seeded_prior_audit"
+            "incremental_blind_union"
+            if existing_output_labels or seeded_prior_labels
+            else "full_shuffled_union"
+            if args.rejudge_all
+            else "seeded_prior_audit"
         ),
         "label_distribution": {
             str(label): sum(1 for row in rows if int(row["relevance"]) == label)
@@ -138,7 +153,12 @@ def main() -> None:
         },
         "human_overlap_audit": human_overlap,
         "provenance": (
-            f"All {total} labels were judged in the deterministically shuffled union pool "
+            f"Reused {existing_output_labels} existing blind labels, seeded "
+            f"{seeded_prior_labels} prior-audit labels, and judged {newly_judged_labels} new pairs. "
+            "Every judgment input hid retrieval ranks, scores, channels, and plans. "
+            "Human qrels remain separate."
+            if existing_output_labels or seeded_prior_labels
+            else f"All {total} labels were judged in the deterministically shuffled union pool "
             "with retrieval ranks, scores, channels, and plans hidden. Human qrels remain separate."
             if args.rejudge_all
             else f"All {total} labels use the same blind DeepSeek judge. Eligible labels may be "

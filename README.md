@@ -13,7 +13,7 @@
 - 端到端评测：planned hybrid 10/10 通过，quality pass rate 100%
 - 检索实验：direct hybrid 双指标通过率 75%，dense 基线为 62.5%
 - 重排实验：planned hybrid 在 8/8 问题上保持双指标通过；cross-encoder 未提升总体 nDCG，暂不设为默认
-- 自然问题开发集：direct nDCG@10 为 0.840，planned v2 为 0.739，当前 auto 为 0.769；默认继续使用 direct
+- Planner v3 开发集：direct nDCG@10 为 0.837，planned v2 为 0.737，conservative auto 为 0.853；等待新 holdout，默认继续使用 direct
 
 最新评测摘要：
 
@@ -37,6 +37,7 @@ Demo 覆盖复合问题拆解、非固定窗口 chunking、query rewrite/query e
 - 正式入库流程：fetch -> markdown -> structure-aware chunking -> embedding -> Chroma index。
 - 非固定窗口切分：按 Markdown 结构、标题和段落边界切分，再用软/硬长度约束兜底。
 - Query planning：先理解问题意图，再生成子查询、分类过滤和必答方面。
+- Conservative planner v3：具体问题安全退化为原查询，只对至少两个明确方面执行有上限、保留原实体的扩展。
 - Planned retrieval：多子查询、多分类召回，再做融合、重排和覆盖选择。
 - Hybrid retrieval：并行执行 bge-m3 向量召回和 BM25 关键词召回，通过 RRF 按排名融合。
 - 可选 Cross-encoder：用问题和候选片段联合打分；支持多语种 GPU 模型、固定候选评测和小显存互斥驻留。
@@ -331,6 +332,8 @@ auto 通过了 Recall、MRR、最坏样例和延迟门槛，但 nDCG 非劣门�
 
 19 题 direct 明显更好，只有 2 题 planned 明显更好；生成意图与逐题 oracle 一致 `16/30`，当前 auto 仅 `10/30`。根因不是单纯阈值错误：planner 会把具体复合问题错误扩展成通用 `RAG key components` 查询，导致原问题证据被宽泛资料挤出 Top 10。因此默认继续使用 direct，下一轮先约束规划扩展，再用新 holdout 验证。
 
+conservative planner v3 将平均检索 runs 从 `18.22` 降到 `1.81`，只有 4/32 个明确多方面问题执行扩展。三系统使用同一个 351-pair 盲标 union pool 后，v3 的 Recall@10、MRR 和 nDCG 分别为 `0.992 / 0.882 / 0.853`，均高于 direct 的 `0.977 / 0.865 / 0.837`；基于 v3 plan shape 的 auto 与逐题 oracle 一致 `28/30`。由于这是开发集，Web 默认仍保持 direct，v3 进入下一套独立 holdout，而不是直接发布。
+
 ## 学习记录
 
 建议按顺序阅读这些阶段记录：
@@ -355,6 +358,7 @@ auto 通过了 Recall、MRR、最坏样例和延迟门槛，但 nDCG 非劣门�
 - `notes/44_routing_holdout_v2_release_decision.md`
 - `notes/45_deepseek_natural_query_development.md`
 - `notes/46_natural_query_retrieval_quality.md`
+- `notes/47_conservative_query_planner_v3.md`
 
 ## 适合作品集展示的点
 
@@ -369,8 +373,8 @@ auto 通过了 Recall、MRR、最坏样例和延迟门槛，但 nDCG 非劣门�
 - 给 Web 页面增加更清晰的“答案/来源/审计”展示。
 - 增加更多真实业务数据集，验证跨领域泛化。
 - 扩充 union benchmark 的 query 数量，并对模型严重分歧样本做独立人工复核。
-- 在自然问题开发集上约束通用 aspect 和低一致性 query expansion，避免规划稀释原问题证据。
-- 修复 planner 后冻结新的独立 holdout；不能继续用 holdout v2 调参或把自然开发集结果当发布证明。
+- 冻结 planner v3 的独立 holdout 问题、系统版本和通过门槛，再决定是否进入 Web 实验模式。
+- 对 planner v3 holdout qrels 做独立人工抽查；不能把自然开发集结果当发布证明。
 - 对 holdout v2 做少量独立人工复核，确认 LLM 盲标结论没有系统性偏差。
 - 并行执行 planned retrieval 中相互独立的子查询，继续降低复杂问题延迟。
 - 增加候选与重排结果缓存，降低 planned retrieval 的在线延迟。

@@ -46,7 +46,7 @@ SYSTEMS = [
     "planned_dense",
     "planned_hybrid",
 ]
-AVAILABLE_SYSTEMS = [*SYSTEMS, "planned_v2_hybrid"]
+AVAILABLE_SYSTEMS = [*SYSTEMS, "planned_v2_hybrid", "planned_v3_hybrid"]
 
 
 def parse_args() -> argparse.Namespace:
@@ -145,7 +145,10 @@ def main() -> None:
             rankings,
             legacy_by_query.get(case_id, []),
         )
-        planned_system = next((system for system in systems if system.startswith("planned_")), None)
+        planned_system = next(
+            (system for system in systems if system.startswith("planned_v3_")),
+            next((system for system in systems if system.startswith("planned_")), None),
+        )
         plan = cache[(case_id, planned_system)].get("plan") if planned_system else None
         union_pools.append(
             {
@@ -170,6 +173,11 @@ def main() -> None:
                     for system in systems
                 },
                 "pooled_candidate_count": len(pooled),
+                "planner_versions": {
+                    system: (cache[(case_id, system)].get("plan") or {}).get("planner_version")
+                    for system in systems
+                    if system.startswith("planned_")
+                },
                 "provenance": provenance,
             }
         )
@@ -235,6 +243,20 @@ def run_system(
             retrieval_strategy=strategy,
             chunks_path=args.chunks,
             fusion_mode="anchored",
+        )
+    elif system.startswith("planned_v3_"):
+        strategy = system.removeprefix("planned_v3_")
+        plan, candidates = planned_retrieve(
+            collection,
+            query,
+            args.embedding_model,
+            args.ollama_host,
+            top_k=args.pool_depth,
+            candidate_k=args.pool_depth,
+            rerank_mode="none",
+            retrieval_strategy=strategy,
+            chunks_path=args.chunks,
+            fusion_mode="conservative",
         )
     elif system.startswith("planned_"):
         strategy = system.removeprefix("planned_")

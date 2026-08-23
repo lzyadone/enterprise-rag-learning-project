@@ -15,6 +15,20 @@ SPEC.loader.exec_module(MODULE)
 
 
 class AutoRoutingAcceptanceTest(unittest.TestCase):
+    def test_latency_loader_accepts_system_manifest(self) -> None:
+        path = PROJECT_ROOT / "data" / "runtime" / "test_latency_manifest.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            '{"case_id":"q1","systems":{"planned_v3_hybrid":{"seconds":1.25}}}\n',
+            encoding="utf-8",
+        )
+        try:
+            latency = MODULE.load_optimized_latency(path)
+        finally:
+            path.unlink(missing_ok=True)
+
+        self.assertEqual(1.25, latency[("q1", "planned_v3_hybrid")])
+
     def test_summary_excludes_candidate_pool_coverage_gaps_from_quality(self) -> None:
         args = make_summary_args()
         evaluable = make_record("q1", "direct_hybrid", 0.8, 0.7, oracle_match=True)
@@ -100,6 +114,7 @@ def make_args() -> argparse.Namespace:
 def make_summary_args() -> argparse.Namespace:
     args = make_args()
     args.evaluation_role = "development"
+    args.planner_version = "conservative"
     args.qrels = Path("qrels.jsonl")
     args.relevant_threshold = 2
     args.direct_system = "direct_hybrid"

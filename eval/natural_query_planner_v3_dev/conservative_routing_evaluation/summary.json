@@ -1,0 +1,102 @@
+{
+  "evaluation_role": "development",
+  "planner_version": "conservative",
+  "cases": 32,
+  "evaluable_cases": 30,
+  "coverage_gap_cases": 2,
+  "evaluable_pool_rate": 0.9375,
+  "qrels": "eval\\benchmarks\\rag_natural_query_planner_v3_dev\\qrels_llm.jsonl",
+  "relevant_threshold": 2,
+  "latency_budget_ms": 12000,
+  "used_optimized_planned_latency": true,
+  "route_counts": {
+    "direct": 28,
+    "planned": 4
+  },
+  "direct_system": "direct_hybrid",
+  "planned_system": "planned_v3_hybrid",
+  "oracle_agreement_cases": 28,
+  "oracle_agreement_rate": 0.9333,
+  "systems": [
+    {
+      "system": "direct_hybrid",
+      "evaluated_cases": 30,
+      "avg_recall_at_10": 0.9767,
+      "avg_precision_at_10": 0.4767,
+      "mrr_at_10": 0.8653,
+      "avg_ndcg_at_10": 0.8373,
+      "avg_seconds": 0.7901,
+      "median_seconds": 0.5206
+    },
+    {
+      "system": "planned_v3_hybrid",
+      "evaluated_cases": 30,
+      "avg_recall_at_10": 0.9915,
+      "avg_precision_at_10": 0.4833,
+      "mrr_at_10": 0.8819,
+      "avg_ndcg_at_10": 0.8533,
+      "avg_seconds": 0.9359,
+      "median_seconds": 0.4788
+    },
+    {
+      "system": "auto",
+      "evaluated_cases": 30,
+      "avg_recall_at_10": 0.9915,
+      "avg_precision_at_10": 0.4833,
+      "mrr_at_10": 0.8819,
+      "avg_ndcg_at_10": 0.8533,
+      "avg_seconds": 0.9963,
+      "median_seconds": 0.5239
+    }
+  ],
+  "boundary": "These questions are development data generated to diagnose natural-language routing. They may be used for later tuning, so their metrics must not be reported as holdout evidence.",
+  "acceptance": {
+    "passed": true,
+    "checks": [
+      {
+        "name": "auto_ndcg_noninferior",
+        "passed": true,
+        "actual": 0.8533,
+        "required": 0.8173
+      },
+      {
+        "name": "auto_recall_noninferior",
+        "passed": true,
+        "actual": 0.9915,
+        "required": 0.9567
+      },
+      {
+        "name": "auto_mrr_noninferior",
+        "passed": true,
+        "actual": 0.8819,
+        "required": 0.8153
+      },
+      {
+        "name": "oracle_agreement",
+        "passed": true,
+        "actual": 0.9333,
+        "required": 0.75
+      },
+      {
+        "name": "planned_route_worst_case",
+        "passed": true,
+        "actual": 0,
+        "required": 0
+      },
+      {
+        "name": "median_latency_within_budget",
+        "passed": true,
+        "actual": 0.5239,
+        "required": 12.0
+      }
+    ],
+    "harmful_planned_cases": [],
+    "thresholds": {
+      "quality_margin": 0.02,
+      "mrr_margin": 0.05,
+      "oracle_agreement_min": 0.75,
+      "max_planned_regret": 0.25,
+      "latency_budget_ms": 12000
+    }
+  }
+}

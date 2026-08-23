@@ -29,6 +29,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate retrieval systems on a union pool.")
     parser.add_argument("--candidate-pools", type=Path, default=DEFAULT_CANDIDATE_POOLS)
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
+    parser.add_argument(
+        "--latency-manifest",
+        type=Path,
+        help="Optional manifest whose matching system timings override pooled-run timings.",
+    )
     parser.add_argument("--qrels", type=Path, default=DEFAULT_QRELS)
     parser.add_argument("--relevant-threshold", type=int, default=2)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
@@ -41,33 +46,48 @@ def main() -> None:
     pools = load_candidate_pools(args.candidate_pools)
     grades_by_query = load_complete_qrels(args.qrels, pools)
     manifests = load_jsonl(args.manifest)
+    latency_overrides = load_manifest_latency(args.latency_manifest)
     systems = list(manifests[0]["systems"])
 
     records: list[dict[str, Any]] = []
     for manifest in manifests:
         query_id = str(manifest["case_id"])
         grades = grades_by_query[query_id]
+        evaluable = any(
+            float(grade) >= args.relevant_threshold for grade in grades.values()
+        )
         for system in systems:
             run = manifest["systems"][system]
             ranked_ids = [str(chunk_id) for chunk_id in run["chunk_ids"]]
-            at_5 = evaluate_retrieval_ranking(
-                ranked_ids,
-                grades,
-                k=5,
-                relevant_threshold=args.relevant_threshold,
+            at_5 = (
+                evaluate_retrieval_ranking(
+                    ranked_ids,
+                    grades,
+                    k=5,
+                    relevant_threshold=args.relevant_threshold,
+                )
+                if evaluable
+                else empty_metrics()
             )
-            at_10 = evaluate_retrieval_ranking(
-                ranked_ids,
-                grades,
-                k=10,
-                relevant_threshold=args.relevant_threshold,
+            at_10 = (
+                evaluate_retrieval_ranking(
+                    ranked_ids,
+                    grades,
+                    k=10,
+                    relevant_threshold=args.relevant_threshold,
+                )
+                if evaluable
+                else empty_metrics()
             )
             records.append(
                 {
                     "case_id": query_id,
                     "question": manifest["question"],
                     "system": system,
-                    "seconds": float(run["seconds"]),
+                    "evaluable": evaluable,
+                    "seconds": latency_overrides.get(
+                        (query_id, system), float(run["seconds"])
+                    ),
                     "metrics": {
                         "recall_at_5": at_5["recall_at_k"],
                         "precision_at_5": at_5["precision_at_k"],
@@ -108,12 +128,16 @@ def build_summary(
 ) -> dict[str, Any]:
     system_rows: list[dict[str, Any]] = []
     for system in systems:
-        selected = [row for row in records if row["system"] == system]
-        seconds = [float(row["seconds"]) for row in selected]
+        all_selected = [row for row in records if row["system"] == system]
+        selected = [row for row in all_selected if row.get("evaluable", True)]
+        if not selected:
+            raise ValueError(f"no evaluable cases for system {system}")
+        seconds = [float(row["seconds"]) for row in all_selected]
         system_rows.append(
             {
                 "system": system,
-                "cases": len(selected),
+                "cases": len(all_selected),
+                "evaluated_cases": len(selected),
                 "avg_recall_at_5": mean_metric(selected, "recall_at_5"),
                 "avg_precision_at_5": mean_metric(selected, "precision_at_5"),
                 "avg_recall_at_10": mean_metric(selected, "recall_at_10"),
@@ -125,19 +149,47 @@ def build_summary(
                 "max_seconds": round(max(seconds), 4),
             }
         )
+    evaluable_case_ids = {
+        str(row["case_id"]) for row in records if row.get("evaluable", True)
+    }
     return {
         "qrels": portable_path(args.qrels),
         "qrels_type": "complete_blind_llm_judgments",
+        "latency_manifest": portable_path(args.latency_manifest) if args.latency_manifest else None,
         "cases": len(manifests),
+        "evaluable_cases": len(evaluable_case_ids),
+        "coverage_gap_cases": len(manifests) - len(evaluable_case_ids),
         "pooled_query_chunk_pairs": sum(row["pooled_candidate_count"] for row in manifests),
         "relevant_threshold": args.relevant_threshold,
         "systems": system_rows,
         "metric_boundary": (
             "Metrics are computed against a depth-10 union pool, not exhaustive judgments over "
-            "all collection chunks. LLM labels are consistent across all 224 pairs but are not "
+            "all collection chunks. LLM labels are consistent across the pooled pairs but are not "
             "a substitute for independent human judgments."
         ),
     }
+
+
+def empty_metrics() -> dict[str, int | float]:
+    return {
+        "relevant_in_pool": 0,
+        "relevant_retrieved": 0,
+        "recall_at_k": 0.0,
+        "precision_at_k": 0.0,
+        "reciprocal_rank": 0.0,
+        "ndcg_at_k": 0.0,
+    }
+
+
+def load_manifest_latency(path: Path | None) -> dict[tuple[str, str], float]:
+    if path is None:
+        return {}
+    overrides: dict[tuple[str, str], float] = {}
+    for row in load_jsonl(path):
+        case_id = str(row["case_id"])
+        for system, run in row.get("systems", {}).items():
+            overrides[(case_id, str(system))] = float(run["seconds"])
+    return overrides
 
 
 def mean_metric(records: list[dict[str, Any]], metric: str) -> float:
@@ -151,10 +203,13 @@ def summary_markdown(summary: dict[str, Any], records: list[dict[str, Any]]) -> 
         "## Setup",
         "",
         f"- cases: {summary['cases']}",
+        f"- evaluable cases: {summary['evaluable_cases']}",
+        f"- candidate-pool coverage gaps: {summary['coverage_gap_cases']}",
         f"- pooled query/chunk pairs: {summary['pooled_query_chunk_pairs']}",
         f"- relevant threshold: >= {summary['relevant_threshold']}",
         f"- qrels: {summary['qrels']}",
         f"- qrels type: {summary['qrels_type']}",
+        f"- independent latency manifest: {summary['latency_manifest'] or 'not used'}",
         "",
         "## Results",
         "",
@@ -184,8 +239,13 @@ def summary_markdown(summary: dict[str, Any], records: list[dict[str, Any]]) -> 
     for case_id in case_ids:
         values = []
         for system in systems:
-            metrics = by_key[(case_id, system)]["metrics"]
-            values.append(f"{metrics['recall_at_10']:.3f} / {metrics['ndcg_at_10']:.3f}")
+            row = by_key[(case_id, system)]
+            metrics = row["metrics"]
+            values.append(
+                f"{metrics['recall_at_10']:.3f} / {metrics['ndcg_at_10']:.3f}"
+                if row.get("evaluable", True)
+                else "coverage gap"
+            )
         lines.append(f"| {case_id} | " + " | ".join(values) + " |")
 
     lines.extend(

@@ -1,0 +1,55 @@
+{
+  "qrels": "eval\\benchmarks\\rag_natural_query_planner_v3_dev\\qrels_llm.jsonl",
+  "qrels_type": "complete_blind_llm_judgments",
+  "latency_manifest": "data\\runtime\\planner_v3_latency\\pool_manifest.jsonl",
+  "cases": 32,
+  "evaluable_cases": 30,
+  "coverage_gap_cases": 2,
+  "pooled_query_chunk_pairs": 351,
+  "relevant_threshold": 2,
+  "systems": [
+    {
+      "system": "direct_hybrid",
+      "cases": 32,
+      "evaluated_cases": 30,
+      "avg_recall_at_5": 0.6329,
+      "avg_precision_at_5": 0.56,
+      "avg_recall_at_10": 0.9767,
+      "avg_precision_at_10": 0.4767,
+      "mrr_at_10": 0.8653,
+      "avg_ndcg_at_10": 0.8373,
+      "avg_seconds": 0.7901,
+      "median_seconds": 0.5206,
+      "max_seconds": 8.3649
+    },
+    {
+      "system": "planned_v2_hybrid",
+      "cases": 32,
+      "evaluated_cases": 30,
+      "avg_recall_at_5": 0.5675,
+      "avg_precision_at_5": 0.48,
+      "avg_recall_at_10": 0.9255,
+      "avg_precision_at_10": 0.4533,
+      "mrr_at_10": 0.6911,
+      "avg_ndcg_at_10": 0.7368,
+      "avg_seconds": 2.1463,
+      "median_seconds": 2.0165,
+      "max_seconds": 4.7476
+    },
+    {
+      "system": "planned_v3_hybrid",
+      "cases": 32,
+      "evaluated_cases": 30,
+      "avg_recall_at_5": 0.6478,
+      "avg_precision_at_5": 0.5733,
+      "avg_recall_at_10": 0.9915,
+      "avg_precision_at_10": 0.4833,
+      "mrr_at_10": 0.8819,
+      "avg_ndcg_at_10": 0.8533,
+      "avg_seconds": 0.9359,
+      "median_seconds": 0.4788,
+      "max_seconds": 7.7299
+    }
+  ],
+  "metric_boundary": "Metrics are computed against a depth-10 union pool, not exhaustive judgments over all collection chunks. LLM labels are consistent across the pooled pairs but are not a substitute for independent human judgments."
+}

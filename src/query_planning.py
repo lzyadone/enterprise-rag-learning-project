@@ -138,6 +138,7 @@ class QueryPlan:
     aspects: list[QueryAspect] = field(default_factory=list)
     confidence: float = 0.0
     warnings: list[str] = field(default_factory=list)
+    planner_version: str = "rules_v2"
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -149,6 +150,7 @@ class QueryPlan:
             "aspects": [aspect.as_dict() for aspect in self.aspects],
             "confidence": self.confidence,
             "warnings": self.warnings,
+            "planner_version": self.planner_version,
         }
 
 
@@ -276,6 +278,35 @@ def plan_query(query: str, max_categories: int = 2) -> QueryPlan:
     )
 
 
+def plan_query_v3(query: str, max_categories: int = 2) -> QueryPlan:
+    """Build a conservative plan that expands only explicit independent needs."""
+    normalized = normalize_query(query)
+    scores = score_categories(normalized)
+    aspects = detect_conservative_aspects(query, normalized)
+    categories = select_conservative_categories(scores, aspects, max_categories)
+    confidence = calculate_confidence(scores)
+    sub_queries = build_conservative_sub_queries(query, aspects)
+    warnings = ["conservative planner v3 preserves original-query entities and constraints"]
+    if not categories:
+        warnings.append("no confident category matched; using broad vector retrieval")
+    if len(aspects) < 2:
+        warnings.append("fewer than two independent aspects; expansion disabled")
+    else:
+        warnings.append(f"bounded expansion enabled for {len(aspects)} explicit aspects")
+
+    return QueryPlan(
+        original_query=query,
+        rewritten_query=query.strip(),
+        intent=infer_intent(normalized, categories),
+        category_filters=categories,
+        sub_queries=sub_queries,
+        aspects=aspects,
+        confidence=confidence,
+        warnings=warnings,
+        planner_version="rules_v3_conservative",
+    )
+
+
 def normalize_query(query: str) -> str:
     return re.sub(r"\s+", " ", query.strip().lower())
 
@@ -347,6 +378,136 @@ def detect_aspects(query: str, normalized_query: str) -> list[QueryAspect]:
     return aspects
 
 
+def detect_conservative_aspects(query: str, normalized_query: str) -> list[QueryAspect]:
+    """Detect only explicit, independently retrievable answer requirements."""
+    aspects: list[QueryAspect] = []
+    if contains_any(
+        normalized_query,
+        ["完整流程", "整体流程", "端到端流程", "rag workflow", "rag pipeline stages"],
+    ):
+        append_aspect_if_missing(aspects, "workflow")
+    if contains_any(
+        normalized_query,
+        ["分类", "架构类型", "架构模式", "范式", "2-step rag", "agentic rag", "hybrid rag"],
+    ):
+        append_aspect_if_missing(aspects, "classification")
+    if contains_any(
+        normalized_query,
+        ["关键技术", "核心技术", "技术组件", "系统组件", "核心组件", "由哪些模块", "包含哪些模块"],
+    ):
+        append_aspect_if_missing(aspects, "techniques")
+    if contains_any(
+        normalized_query,
+        ["query rewrite", "query expansion", "query transformation", "查询改写", "查询扩展", "问题改写", "多路查询", "子问题"],
+    ):
+        append_aspect_if_missing(aspects, "query_optimization")
+    if contains_any(
+        normalized_query,
+        ["瓶颈", "难点", "挑战", "限制", "缺陷", "痛点", "bottleneck", "challenge", "limitation"],
+    ):
+        append_aspect_if_missing(aspects, "bottlenecks")
+    if contains_any(
+        normalized_query,
+        ["评估", "指标", "忠实", "groundedness", "faithfulness", "evaluation", "metric"],
+    ):
+        append_aspect_if_missing(aspects, "evaluation")
+    if contains_any(
+        normalized_query,
+        ["citation", "引用质量", "引用召回", "引用精度", "source attribution", "verifiability"],
+    ):
+        append_aspect_if_missing(aspects, "citation_quality")
+    if contains_any(
+        normalized_query,
+        ["badcase", "failure analysis", "error analysis", "diagnostic", "错误分析"],
+    ):
+        append_aspect_if_missing(aspects, "badcase_analysis")
+
+    has_ingestion_scope = contains_any(
+        normalized_query,
+        ["ingestion", "摄取", "入库", "知识库更新", "增量更新", "向量写入"],
+    )
+    if has_ingestion_scope and contains_any(
+        normalized_query,
+        ["幂等", "重复", "去重", "文档id", "document id", "旧向量", "一致性", "过期"],
+    ):
+        aspects.append(
+            QueryAspect(
+                name="ingestion_identity",
+                question="增量摄取时，文档 ID、去重、旧向量替换和向量写入如何保证幂等与一致性？",
+                search_query=(
+                    "ingestion pipeline document ID idempotency deduplication update delete stale "
+                    "vectors vector store consistency"
+                ),
+                categories=["ingestion", "indexing", "vector db"],
+            )
+        )
+    if has_ingestion_scope and contains_any(normalized_query, ["缓存", "cache"]):
+        aspects.append(
+            QueryAspect(
+                name="ingestion_cache",
+                question="增量摄取中的缓存应如何命中、失效和清理，避免复用过期处理结果？",
+                search_query=(
+                    "ingestion pipeline cache invalidation document update transformation cache "
+                    "clear stale processing results"
+                ),
+                categories=["ingestion", "indexing"],
+            )
+        )
+
+    specialize_aspects_for_query(aspects, normalized_query)
+    return anchor_aspect_queries(query, dedupe_aspects(aspects))
+
+
+def select_conservative_categories(
+    scores: list[tuple[str, float]],
+    aspects: list[QueryAspect],
+    max_categories: int,
+) -> list[str]:
+    if max_categories <= 0:
+        return []
+    scored = [category for category, score in scores if score > 0]
+    specific = [category for category in scored if category not in {"RAG overview", "RAG challenges"}]
+    candidates = categories_from_aspects(aspects) + specific + scored
+    return dedupe(candidates)[:max_categories]
+
+
+def build_conservative_sub_queries(query: str, aspects: list[QueryAspect]) -> list[str]:
+    if len(aspects) < 2:
+        return [query.strip()]
+    return dedupe([query.strip()] + [aspect.search_query for aspect in aspects])
+
+
+def anchor_aspect_queries(query: str, aspects: list[QueryAspect]) -> list[QueryAspect]:
+    anchored: list[QueryAspect] = []
+    for aspect in aspects:
+        focus = aspect.search_query or aspect.question
+        anchored.append(
+            QueryAspect(
+                name=aspect.name,
+                question=aspect.question,
+                search_query=f"{query.strip()} 检索重点: {focus}",
+                categories=list(aspect.categories),
+                required=aspect.required,
+            )
+        )
+    return anchored
+
+
+def dedupe_aspects(aspects: list[QueryAspect]) -> list[QueryAspect]:
+    seen: set[str] = set()
+    result: list[QueryAspect] = []
+    for aspect in aspects:
+        if aspect.name in seen:
+            continue
+        seen.add(aspect.name)
+        result.append(aspect)
+    return result
+
+
+def contains_any(text: str, markers: list[str]) -> bool:
+    return any(marker in text for marker in markers)
+
+
 def specialize_aspects_for_query(aspects: list[QueryAspect], normalized_query: str) -> None:
     for aspect in aspects:
         if aspect.name != "techniques":
@@ -357,52 +518,6 @@ def specialize_aspects_for_query(aspects: list[QueryAspect], normalized_query: s
             specialize_reranking_aspect(aspect)
         elif is_hybrid_retrieval_strategy_question(normalized_query):
             specialize_hybrid_retrieval_aspect(aspect)
-    return
-
-    if not is_retrieval_strategy_question(normalized_query):
-        return
-
-    for aspect in aspects:
-        if aspect.name != "techniques":
-            continue
-        aspect.question = (
-            "为什么企业级 RAG 需要混合检索、metadata 过滤和重排，而不是只依赖一次向量相似度搜索？"
-            "请围绕召回覆盖、精确过滤、候选排序和单路向量检索的失败风险回答；"
-            "只有在检索资料直接支持时，再补充成本、延迟或工程取舍。"
-        )
-        aspect.search_query = (
-            "enterprise RAG hybrid retrieval metadata filtering reranking vector similarity search "
-            "BGE-M3 dense sparse retrieval re-ranking failure precision recall"
-        )
-        aspect.categories = ["retrieval", "vector db", "embedding", "reranking", "RAG challenges"]
-
-
-def is_retrieval_strategy_question(normalized_query: str) -> bool:
-    markers = [
-        "hybrid retrieval",
-        "hybrid search",
-        "metadata",
-        "metadata filter",
-        "metadata filtering",
-        "rerank",
-        "reranking",
-        "vector search",
-        "vector similarity",
-        "semantic search",
-        "dense",
-        "sparse",
-        "混合检索",
-        "重排",
-        "向量相似度",
-        "向量搜索",
-        "过滤",
-    ]
-    has_strategy_marker = any(marker in normalized_query for marker in markers)
-    has_rag_or_retrieval_scope = any(
-        marker in normalized_query
-        for marker in ["rag", "retrieval", "search", "检索", "向量", "metadata"]
-    )
-    return has_strategy_marker and has_rag_or_retrieval_scope
 
 
 def specialize_hybrid_retrieval_aspect(aspect: QueryAspect) -> None:

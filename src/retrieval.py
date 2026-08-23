@@ -12,7 +12,7 @@ import chromadb
 from src.bm25_retrieval import get_bm25_index
 from src.cross_encoder_reranking import cross_encoder_rerank
 from src.ollama_http import embed_query, unload_embedding_model
-from src.query_planning import QueryPlan, plan_query
+from src.query_planning import QueryPlan, plan_query, plan_query_v3
 from src.reranking import lexical_rerank
 
 
@@ -125,6 +125,9 @@ DEFAULT_CHUNKS_PATH = Path(__file__).resolve().parents[1] / "data" / "processed"
 PLANNED_ANCHOR_WEIGHT = 2.0
 PLANNED_GLOBAL_EXPANSION_WEIGHT = 1.0
 PLANNED_FILTERED_EXPANSION_WEIGHT = 0.5
+V3_ANCHOR_WEIGHT = 3.0
+V3_GLOBAL_EXPANSION_WEIGHT = 0.75
+V3_FILTERED_EXPANSION_WEIGHT = 0.25
 
 
 @dataclass
@@ -256,7 +259,7 @@ def planned_retrieve(
     query_plan: QueryPlan | None = None,
     fusion_mode: str = "legacy",
 ) -> tuple[QueryPlan, list[RetrievedChunk]]:
-    if fusion_mode == "anchored":
+    if fusion_mode in {"anchored", "conservative"}:
         return anchored_planned_retrieve(
             collection,
             query,
@@ -271,9 +274,10 @@ def planned_retrieve(
             chunks_path=chunks_path,
             reuse_query_embeddings=reuse_query_embeddings,
             query_plan=query_plan,
+            planning_mode="conservative" if fusion_mode == "conservative" else "legacy",
         )
     if fusion_mode != "legacy":
-        raise ValueError("fusion_mode must be legacy or anchored")
+        raise ValueError("fusion_mode must be legacy, anchored, or conservative")
 
     plan = query_plan or plan_query(query, max_categories=max_categories)
     if manual_category:
@@ -405,21 +409,33 @@ def anchored_planned_retrieve(
     chunks_path: Path = DEFAULT_CHUNKS_PATH,
     reuse_query_embeddings: bool = True,
     query_plan: QueryPlan | None = None,
+    planning_mode: str = "legacy",
 ) -> tuple[QueryPlan, list[RetrievedChunk]]:
     """Retrieve with an original-query anchor and bounded expansion influence."""
-    plan = query_plan or plan_query(query, max_categories=max_categories)
+    if planning_mode not in {"legacy", "conservative"}:
+        raise ValueError("planning_mode must be legacy or conservative")
+    conservative = planning_mode == "conservative"
+    plan = query_plan or (
+        plan_query_v3(query, max_categories=max_categories)
+        if conservative
+        else plan_query(query, max_categories=max_categories)
+    )
     anchor_candidate_k = candidate_k
     if manual_category:
         plan.category_filters = [manual_category]
         plan.warnings.append("manual category override applied")
-    if plan.aspects:
+    if plan.aspects and (not conservative or len(plan.aspects) >= 2):
         adaptive_top_k = min(10, max(top_k, len(plan.aspects) * 2 + 4))
         if adaptive_top_k > top_k:
             plan.warnings.append(f"adaptive top_k expanded from {top_k} to {adaptive_top_k} for aspect coverage")
             top_k = adaptive_top_k
         candidate_k = max(candidate_k, top_k * 2)
 
-    specs = build_anchored_run_specs(query, plan)
+    specs = (
+        build_conservative_run_specs(query, plan)
+        if conservative
+        else build_anchored_run_specs(query, plan)
+    )
     unique_queries = list(dict.fromkeys(spec.query for spec in specs))
     embedding_by_query = (
         {
@@ -430,7 +446,7 @@ def anchored_planned_retrieve(
         else {}
     )
     weighted_runs: list[tuple[list[RetrievedChunk], float]] = []
-    weights = anchored_run_weights(specs)
+    weights = conservative_run_weights(specs) if conservative else anchored_run_weights(specs)
     for spec, weight in zip(specs, weights):
         run_top_k = top_k if spec.group == "anchor" else candidate_k
         run_candidate_k = anchor_candidate_k if spec.group == "anchor" else candidate_k
@@ -458,7 +474,10 @@ def anchored_planned_retrieve(
         weights=[weight for _, weight in weighted_runs],
     )
     rerank_pool = fused
-    coverage_slots = max(1, min(2, top_k // 4))
+    if conservative:
+        coverage_slots = min(2, top_k // 4) if len(plan.aspects) >= 2 else 0
+    else:
+        coverage_slots = max(1, min(2, top_k // 4))
     if rerank_mode == "cross_encoder":
         rerank_pool_size = min(len(fused), max(candidate_k, top_k * 3))
         rerank_pool = select_with_bounded_plan_coverage(
@@ -474,8 +493,10 @@ def anchored_planned_retrieve(
     prepare_model_residency(rerank_mode, embedding_model, ollama_host)
     ranked = rerank(query, rerank_pool, len(rerank_pool), rerank_mode)
     ranked = apply_plan_boosts(ranked, plan, max_boost=0.006)
+    fusion_label = "conservative v3" if conservative else "anchored"
     plan.warnings.append(
-        f"anchored fusion used {len(specs)} deduplicated runs with {coverage_slots} coverage slots"
+        f"{fusion_label} fusion used {len(specs)} deduplicated runs with "
+        f"{coverage_slots} coverage slots"
     )
     return plan, select_with_bounded_plan_coverage(
         ranked,
@@ -519,6 +540,33 @@ def build_anchored_run_specs(query: str, plan: QueryPlan) -> list[PlannedRunSpec
     return specs
 
 
+def build_conservative_run_specs(query: str, plan: QueryPlan) -> list[PlannedRunSpec]:
+    """Build a small expansion set whose queries retain the original user wording."""
+    specs: list[PlannedRunSpec] = []
+    seen: set[tuple[str, str | None]] = set()
+
+    def add(query_text: str, category: str | None, aspect: str | None, group: str) -> None:
+        normalized = " ".join(query_text.split()).casefold()
+        key = (normalized, category)
+        if not normalized or key in seen:
+            return
+        seen.add(key)
+        specs.append(PlannedRunSpec(query_text.strip(), category, aspect, group))
+
+    add(query, None, None, "anchor")
+    if len(plan.aspects) < 2:
+        return specs
+
+    for category in plan.category_filters[:2]:
+        add(query, category, None, "filtered_expansion")
+    for aspect in plan.aspects[:4]:
+        aspect_query = aspect.search_query or f"{query} 检索重点: {aspect.question}"
+        add(aspect_query, None, aspect.name, "global_expansion")
+        for category in aspect.categories[:1]:
+            add(aspect_query, category, aspect.name, "filtered_expansion")
+    return specs
+
+
 def anchored_run_weights(specs: list[PlannedRunSpec]) -> list[float]:
     group_totals = {
         "anchor": PLANNED_ANCHOR_WEIGHT,
@@ -529,6 +577,16 @@ def anchored_run_weights(specs: list[PlannedRunSpec]) -> list[float]:
         group: sum(1 for spec in specs if spec.group == group)
         for group in group_totals
     }
+    return [group_totals[spec.group] / counts[spec.group] for spec in specs]
+
+
+def conservative_run_weights(specs: list[PlannedRunSpec]) -> list[float]:
+    group_totals = {
+        "anchor": V3_ANCHOR_WEIGHT,
+        "global_expansion": V3_GLOBAL_EXPANSION_WEIGHT,
+        "filtered_expansion": V3_FILTERED_EXPANSION_WEIGHT,
+    }
+    counts = {group: sum(1 for spec in specs if spec.group == group) for group in group_totals}
     return [group_totals[spec.group] / counts[spec.group] for spec in specs]
 
 
