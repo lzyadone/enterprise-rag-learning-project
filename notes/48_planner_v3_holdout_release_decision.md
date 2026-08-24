@@ -77,14 +77,34 @@ nDCG 完全相同，脚本按 tie-break 把 oracle 记为 direct，因此不是�
 
 总体结果为 **PASS**。
 
+## 辅助抽查
+
+已准备 12 条固定抽查样本：
+  `eval/benchmarks/rag_natural_query_holdout_v3/human_spot_audit_sample.jsonl`。
+
+Codex 对这 12 条做了独立辅助复核，结果记录在：
+
+- `eval/benchmarks/rag_natural_query_holdout_v3/codex_spot_audit.jsonl`
+- `eval/benchmarks/rag_natural_query_holdout_v3/codex_spot_audit_summary.json`
+
+结果：
+
+- exact agreement：9/12，即 75.0%；
+- within-one agreement：12/12，即 100.0%；
+- severe disagreement：0/12；
+- 3 条分歧均为轻微偏高，主要出现在候选 chunk 只回答复合问题的一部分，或命中相邻 API 而不是目标 API。
+
+将这 12 条辅助复核分数临时套入 qrels 后，direct、planned v3 和 conservative auto
+的相对结论不变，预注册门槛仍然通过。这个结果可以作为独立辅助抽查记录，但不能
+宣传为人工金标或生产级人工审计。
+
 ## 工程决定
 
 - Web 默认继续保持 `direct`。
 - Planner v3 通过本轮 LLM-labeled holdout 的预注册门槛，可作为 release candidate。
-- 在人工抽查 LLM qrels 前，不把这次结果表述为生产级证明。
-- 已准备 12 条固定人工抽查样本：
-  `eval/benchmarks/rag_natural_query_holdout_v3/human_spot_audit_sample.jsonl`。
-- 人工抽查通过后，可以把 Web 手动 planned 实验路径升级到 Planner v3；仍不立即替换默认 direct。
+- 辅助抽查未发现严重错标，足以支持在作品集/学习项目中进入 Web 实验模式。
+- Web 手动 planned 实验路径可以升级到 Planner v3；仍不立即替换默认 direct。
+- 如果后续要对外发布生产级结论，仍需要真人复核一小批 qrels。
 
 ## 可复现产物
 
