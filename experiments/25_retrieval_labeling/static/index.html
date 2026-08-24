@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>检索相关性标注</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>检索相关性标注</h1>
+        <p id="datasetPath" class="subtle">正在读取评测集</p>
+      </div>
+      <div class="overall-progress" aria-label="总标注进度">
+        <div class="progress-copy">
+          <span>总进度</span>
+          <strong id="overallCount">0 / 0</strong>
+        </div>
+        <div class="progress-track"><span id="overallBar"></span></div>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <aside class="question-panel" aria-label="问题列表">
+        <div class="panel-title">
+          <span>问题</span>
+          <strong id="questionCount">0</strong>
+        </div>
+        <nav id="questionList" class="question-list"></nav>
+      </aside>
+
+      <main class="document-workspace">
+        <section class="question-header">
+          <div>
+            <span id="caseId" class="case-id">-</span>
+            <h2 id="questionText">正在加载问题</h2>
+          </div>
+          <div class="candidate-nav">
+            <button id="previousCandidate" class="icon-button" type="button" title="上一条候选" aria-label="上一条候选">←</button>
+            <strong id="candidatePosition">0 / 0</strong>
+            <button id="nextCandidate" class="icon-button" type="button" title="下一条候选" aria-label="下一条候选">→</button>
+          </div>
+        </section>
+
+        <section class="source-header">
+          <div class="source-primary">
+            <h3 id="sourceTitle">-</h3>
+            <p id="headingPath" class="subtle">-</p>
+          </div>
+          <a id="sourceLink" class="source-link" href="#" target="_blank" rel="noreferrer">打开来源</a>
+        </section>
+
+        <div id="metadataStrip" class="metadata-strip"></div>
+        <article id="documentText" class="document-text"></article>
+
+        <section class="grade-toolbar" aria-label="相关性评分">
+          <button class="grade grade-0" type="button" data-grade="0"><strong>0</strong><span>无关</span></button>
+          <button class="grade grade-1" type="button" data-grade="1"><strong>1</strong><span>仅主题相关</span></button>
+          <button class="grade grade-2" type="button" data-grade="2"><strong>2</strong><span>辅助证据</span></button>
+          <button class="grade grade-3" type="button" data-grade="3"><strong>3</strong><span>直接证据</span></button>
+        </section>
+      </main>
+
+      <aside class="review-panel">
+        <div class="panel-title">
+          <span>本题进度</span>
+          <strong id="caseProgress">0 / 0</strong>
+        </div>
+        <dl class="detail-list">
+          <div><dt>知识块</dt><dd id="chunkId">-</dd></div>
+          <div><dt>候选序号</dt><dd id="poolRank">-</dd></div>
+          <div><dt>检索通道</dt><dd id="retrievalChannels">-</dd></div>
+          <div><dt>检索排序</dt><dd id="retrievalRank">-</dd></div>
+          <div><dt>查询方面</dt><dd id="queryAspect">-</dd></div>
+        </dl>
+        <label class="note-field" for="reviewNote">
+          <span>标注备注</span>
+          <textarea id="reviewNote" rows="7" placeholder="记录边界情况或判断依据"></textarea>
+        </label>
+        <button id="clearJudgment" class="clear-button" type="button">清除当前标注</button>
+        <p id="saveStatus" class="save-status" role="status">未标注</p>
+      </aside>
+    </div>
+
+    <div id="errorBanner" class="error-banner" role="alert" hidden></div>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

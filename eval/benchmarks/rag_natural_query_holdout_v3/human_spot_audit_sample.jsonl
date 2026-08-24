@@ -1,0 +1,12 @@
+{"query_id":"natural_holdout3_012","chunk_id":"llamaindex_node_parsers::chunk_0003","llm_relevance":0,"human_relevance":null,"human_note":"","audit_status":"pending_human_review"}
+{"query_id":"natural_holdout3_002","chunk_id":"langchain_retrievers::chunk_0002","llm_relevance":0,"human_relevance":null,"human_note":"","audit_status":"pending_human_review"}
+{"query_id":"natural_holdout3_006","chunk_id":"bge_m3_model_card::chunk_0014","llm_relevance":0,"human_relevance":null,"human_note":"","audit_status":"pending_human_review"}
+{"query_id":"natural_holdout3_029","chunk_id":"colbert_github::chunk_0008","llm_relevance":1,"human_relevance":null,"human_note":"","audit_status":"pending_human_review"}
+{"query_id":"natural_holdout3_019","chunk_id":"llamaindex_loading_data::chunk_0000","llm_relevance":1,"human_relevance":null,"human_note":"","audit_status":"pending_human_review"}
+{"query_id":"natural_holdout3_016","chunk_id":"alce_citation_paper::chunk_0015","llm_relevance":1,"human_relevance":null,"human_note":"","audit_status":"pending_human_review"}
+{"query_id":"natural_holdout3_015","chunk_id":"ollama_api::chunk_0023","llm_relevance":2,"human_relevance":null,"human_note":"","audit_status":"pending_human_review"}
+{"query_id":"natural_holdout3_022","chunk_id":"langchain_self_query::chunk_0016","llm_relevance":2,"human_relevance":null,"human_note":"","audit_status":"pending_human_review"}
+{"query_id":"natural_holdout3_019","chunk_id":"llamaindex_ingestion_pipeline::chunk_0002","llm_relevance":2,"human_relevance":null,"human_note":"","audit_status":"pending_human_review"}
+{"query_id":"natural_holdout3_006","chunk_id":"bge_m3_paper::chunk_0001","llm_relevance":3,"human_relevance":null,"human_note":"","audit_status":"pending_human_review"}
+{"query_id":"natural_holdout3_011","chunk_id":"chroma_collections::chunk_0002","llm_relevance":3,"human_relevance":null,"human_note":"","audit_status":"pending_human_review"}
+{"query_id":"natural_holdout3_024","chunk_id":"ragas_context_recall::chunk_0005","llm_relevance":3,"human_relevance":null,"human_note":"","audit_status":"pending_human_review"}

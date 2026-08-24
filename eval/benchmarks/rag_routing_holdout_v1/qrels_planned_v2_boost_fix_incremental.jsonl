@@ -1,0 +1,1 @@
+{"query_id":"holdout_chroma_filters","chunk_id":"langchain_self_query::chunk_0014","relevance":0,"annotator":"llm:deepseek-v4-flash","note":"LLM盲审：内容仅提及运行查询，未涉及Chroma的metadata和文档内容过滤","updated_at":"2026-08-23T12:19:32+00:00"}

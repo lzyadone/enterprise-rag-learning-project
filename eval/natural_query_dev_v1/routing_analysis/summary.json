@@ -1,0 +1,56 @@
+{
+  "dataset": "eval\\datasets\\rag_natural_query_dev_v1.jsonl",
+  "cases": 32,
+  "latency_budget_ms": 12000,
+  "intended_route_counts": {
+    "direct": 18,
+    "planned": 14
+  },
+  "selected_route_counts": {
+    "direct": 15,
+    "planned": 17
+  },
+  "confusion": {
+    "direct": {
+      "direct": 8,
+      "planned": 10
+    },
+    "planned": {
+      "direct": 7,
+      "planned": 7
+    }
+  },
+  "route_matches": 15,
+  "route_match_rate": 0.4688,
+  "direct_retention_rate": 0.4444,
+  "planned_detection_rate": 0.5,
+  "over_routed_case_ids": [
+    "natural_dev_002",
+    "natural_dev_003",
+    "natural_dev_004",
+    "natural_dev_005",
+    "natural_dev_006",
+    "natural_dev_007",
+    "natural_dev_014",
+    "natural_dev_016",
+    "natural_dev_018",
+    "natural_dev_019"
+  ],
+  "under_routed_case_ids": [
+    "natural_dev_021",
+    "natural_dev_022",
+    "natural_dev_023",
+    "natural_dev_024",
+    "natural_dev_025",
+    "natural_dev_030",
+    "natural_dev_031"
+  ],
+  "reason_counts": {
+    "multi_category_expansion_without_aspects": 8,
+    "aspect_detected_with_low_category_confidence": 1,
+    "multiple_answer_aspects": 9,
+    "estimated_planned_latency_exceeds_budget": 1,
+    "cross_category_comparison": 1
+  },
+  "boundary": "Agreement measures whether the rule router recognizes the generator's intended complexity. It does not show which retrieval path has better evidence quality; that requires pooled qrels."
+}

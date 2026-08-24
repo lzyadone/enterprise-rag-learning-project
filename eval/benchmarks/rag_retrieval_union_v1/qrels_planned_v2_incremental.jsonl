@@ -1,0 +1,8 @@
+{"query_id":"rag_compound_overview","chunk_id":"rag_survey_2023::chunk_0008","relevance":3,"annotator":"llm:deepseek-v4-flash","note":"LLM盲审：直接介绍高级RAG的预检索和后检索技术，属于关键技术","updated_at":"2026-08-23T12:02:05+00:00"}
+{"query_id":"rag_compound_overview","chunk_id":"rag_survey_2023::chunk_0004","relevance":2,"annotator":"llm:deepseek-v4-flash","note":"LLM盲审：概述RAG研究范式但未详述类别、技术或瓶颈","updated_at":"2026-08-23T12:02:05+00:00"}
+{"query_id":"rag_compound_overview","chunk_id":"phoenix_evaluate_rag::chunk_0000","relevance":1,"annotator":"llm:deepseek-v4-flash","note":"LLM盲审：仅介绍RAG基本流程，未涉及分类、关键技术或瓶颈","updated_at":"2026-08-23T12:02:05+00:00"}
+{"query_id":"rag_compound_overview","chunk_id":"hf_rag_eval_cookbook::chunk_0017","relevance":1,"annotator":"llm:deepseek-v4-flash","note":"LLM盲审：仅展示RAG评估代码，与问题要求不直接相关","updated_at":"2026-08-23T12:02:05+00:00"}
+{"query_id":"rag_compound_overview","chunk_id":"langchain_retrieval::chunk_0010","relevance":2,"annotator":"llm:deepseek-v4-flash","note":"LLM盲审：介绍混合RAG架构，属于类别之一，但未全面覆盖","updated_at":"2026-08-23T12:02:05+00:00"}
+{"query_id":"reranking_role","chunk_id":"rag_failure_points::chunk_0018","relevance":0,"annotator":"llm:deepseek-v4-flash","note":"LLM盲审：仅总结RAG系统挑战，未涉及重排与向量检索关系","updated_at":"2026-08-23T12:02:07+00:00"}
+{"query_id":"vector_db_chroma_role","chunk_id":"hf_rag_eval_cookbook::chunk_0011","relevance":0,"annotator":"llm:deepseek-v4-flash","note":"LLM盲审：内容仅涉及FAISS向量库，未提及Chroma或metadata filter","updated_at":"2026-08-23T12:02:09+00:00"}
+{"query_id":"enterprise_rag_retrieval","chunk_id":"rag_failure_points::chunk_0008","relevance":2,"annotator":"llm:deepseek-v4-flash","note":"LLM盲审：描述了RAG查询流程和重排步骤，但未直接解释混合检索和metadata过滤的必要性","updated_at":"2026-08-23T12:02:10+00:00"}

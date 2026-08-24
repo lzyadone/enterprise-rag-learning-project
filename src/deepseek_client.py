@@ -25,6 +25,7 @@ def chat_completion(
     max_tokens: int = 900,
     timeout: int = 240,
     response_format: dict[str, str] | None = None,
+    thinking: bool | None = None,
 ) -> str:
     key = api_key or get_deepseek_api_key()
     if not key:
@@ -39,6 +40,8 @@ def chat_completion(
     }
     if response_format:
         payload["response_format"] = response_format
+    if thinking is not None:
+        payload["thinking"] = {"type": "enabled" if thinking else "disabled"}
 
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     request = Request(

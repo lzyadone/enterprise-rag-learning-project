@@ -1,0 +1,52 @@
+{
+  "input": "eval\\datasets\\rag_natural_query_dev_v1_raw.jsonl",
+  "output": "eval\\datasets\\rag_natural_query_dev_v1.jsonl",
+  "embedding_model": "bge-m3",
+  "same_route_threshold": 0.86,
+  "raw_count": 38,
+  "curated_count": 32,
+  "removed_count": 6,
+  "curated_route_counts": {
+    "direct": 18,
+    "planned": 14
+  },
+  "removed": [
+    {
+      "removed_id": "natural_dev_015",
+      "kept_id": "natural_dev_012",
+      "intended_route": "direct",
+      "cosine_similarity": 0.8672
+    },
+    {
+      "removed_id": "natural_dev_017",
+      "kept_id": "natural_dev_016",
+      "intended_route": "direct",
+      "cosine_similarity": 0.8666
+    },
+    {
+      "removed_id": "natural_dev_034",
+      "kept_id": "natural_dev_026",
+      "intended_route": "planned",
+      "cosine_similarity": 0.879
+    },
+    {
+      "removed_id": "natural_dev_035",
+      "kept_id": "natural_dev_024",
+      "intended_route": "planned",
+      "cosine_similarity": 0.9241
+    },
+    {
+      "removed_id": "natural_dev_036",
+      "kept_id": "natural_dev_029",
+      "intended_route": "planned",
+      "cosine_similarity": 0.8789
+    },
+    {
+      "removed_id": "natural_dev_038",
+      "kept_id": "natural_dev_037",
+      "intended_route": "planned",
+      "cosine_similarity": 0.8875
+    }
+  ],
+  "boundary": "Only later questions with a same-route cosine similarity at or above the threshold were removed. Similar cross-route pairs are retained as useful routing contrasts."
+}

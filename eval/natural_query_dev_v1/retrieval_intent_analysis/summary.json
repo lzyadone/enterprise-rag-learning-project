@@ -1,0 +1,58 @@
+{
+  "dataset": "eval\\datasets\\rag_natural_query_dev_v1.jsonl",
+  "retrieval_results": "eval\\natural_query_retrieval_dev_v1\\routing_evaluation\\results.jsonl",
+  "cases": 32,
+  "evaluable_cases": 30,
+  "coverage_gap_cases": 2,
+  "direct_system": "direct_hybrid",
+  "planned_system": "planned_v2_hybrid",
+  "meaningful_margin": 0.05,
+  "benefit_classes": {
+    "comparable": 9,
+    "direct_better": 19,
+    "coverage_gap": 2,
+    "planned_better": 2
+  },
+  "intended_oracle_matches": 16,
+  "intended_oracle_match_rate": 0.5333,
+  "auto_oracle_matches": 10,
+  "auto_oracle_match_rate": 0.3333,
+  "intended_oracle_confusion": {
+    "direct": {
+      "direct": 13,
+      "planned": 3
+    },
+    "planned": {
+      "direct": 11,
+      "planned": 3
+    }
+  },
+  "by_intended_route": {
+    "direct": {
+      "cases": 18,
+      "evaluable_cases": 16,
+      "coverage_gap_cases": 2,
+      "avg_direct_ndcg_at_10": 0.8107,
+      "avg_planned_ndcg_at_10": 0.7115,
+      "avg_planned_ndcg_delta": -0.0992,
+      "benefit_classes": {
+        "comparable": 6,
+        "direct_better": 10
+      }
+    },
+    "planned": {
+      "cases": 14,
+      "evaluable_cases": 14,
+      "coverage_gap_cases": 0,
+      "avg_direct_ndcg_at_10": 0.8742,
+      "avg_planned_ndcg_at_10": 0.7695,
+      "avg_planned_ndcg_delta": -0.1047,
+      "benefit_classes": {
+        "planned_better": 2,
+        "direct_better": 9,
+        "comparable": 3
+      }
+    }
+  },
+  "boundary": "This is development analysis. LLM-generated intent labels and LLM relevance qrels may share model biases. Observed retrieval deltas can guide development but require a new independent holdout before any release claim."
+}

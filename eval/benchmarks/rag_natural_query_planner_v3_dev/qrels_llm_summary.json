@@ -1,0 +1,27 @@
+{
+  "model": "deepseek-v4-flash",
+  "total": 351,
+  "label_sources": {
+    "existing_output": 349,
+    "seeded_prior_audit": 0,
+    "newly_judged": 2
+  },
+  "judging_mode": "incremental_blind_union",
+  "label_distribution": {
+    "0": 99,
+    "1": 105,
+    "2": 87,
+    "3": 60
+  },
+  "human_overlap_audit": {
+    "available": false,
+    "total": 0,
+    "exact_agreement": 0,
+    "exact_agreement_rate": 0.0,
+    "within_one": 0,
+    "within_one_rate": 0.0,
+    "severe_disagreements": 0,
+    "severe_disagreement_rate": 0.0
+  },
+  "provenance": "Reused 349 existing blind labels, seeded 0 prior-audit labels, and judged 2 new pairs. Every judgment input hid retrieval ranks, scores, channels, and plans. Human qrels remain separate."
+}

@@ -1,0 +1,16 @@
+{"id":"holdout_rag_limits","question":"RAG 的检索机制主要缓解大模型的哪两类知识限制？","stratum":"focused","topic":"RAG overview"}
+{"id":"holdout_recursive_splitter","question":"RecursiveCharacterTextSplitter 按什么顺序寻找文本边界？","stratum":"focused","topic":"chunking"}
+{"id":"holdout_bge_m3_modes","question":"BGE-M3 同时支持哪些检索表示方式？","stratum":"focused","topic":"embedding"}
+{"id":"holdout_chroma_filters","question":"Chroma 查询中的 metadata 条件和文档内容条件分别过滤什么？","stratum":"focused","topic":"vector db"}
+{"id":"holdout_colbert_interaction","question":"ColBERT 的 late interaction 与先生成单个文档向量有什么区别？","stratum":"focused","topic":"reranking"}
+{"id":"holdout_faithfulness_metric","question":"RAG 评测中的 faithfulness 具体检查答案的什么性质？","stratum":"focused","topic":"evaluation"}
+{"id":"holdout_context_precision","question":"context precision 为什么会关注相关片段在检索结果中的排序位置？","stratum":"focused","topic":"evaluation"}
+{"id":"holdout_ollama_embedding","question":"Ollama 的 embedding 接口在本地 RAG 流程中输入和输出什么？","stratum":"focused","topic":"local model"}
+{"id":"holdout_ingestion_design","question":"设计企业知识库入库流程时，文档解析、结构化切分、metadata、embedding 和索引应如何衔接？","stratum":"compound","topic":"ingestion workflow"}
+{"id":"holdout_hybrid_tradeoffs","question":"比较 dense、sparse 和 hybrid retrieval 的能力边界，并说明什么情况下应组合使用。","stratum":"compound","topic":"retrieval comparison"}
+{"id":"holdout_evaluation_layers","question":"如何把检索召回、答案忠实性、答案正确性和引用质量组合成一套 RAG 评测方案？","stratum":"compound","topic":"evaluation design"}
+{"id":"holdout_wrong_citation_diagnosis","question":"答案内容看似正确但引用并不支持结论时，应如何区分检索、上下文利用和生成阶段的问题？","stratum":"compound","topic":"failure diagnosis"}
+{"id":"holdout_topk_rerank_context","question":"为什么单纯增大 top_k 不能替代重排和上下文选择？三者应如何配合？","stratum":"compound","topic":"retrieval and context"}
+{"id":"holdout_incremental_updates","question":"知识库持续更新时，增量 ingestion、文档去重、metadata 和向量索引应如何保持一致？","stratum":"compound","topic":"index maintenance"}
+{"id":"holdout_lost_in_middle","question":"长上下文的 lost-in-the-middle 问题会怎样影响 RAG，检索排序和上下文组装可以如何缓解？","stratum":"compound","topic":"context assembly"}
+{"id":"holdout_rag_architecture_choice","question":"面对简单事实问答、多步骤任务和需要外部工具的任务，应如何在 2-Step RAG、Hybrid RAG 与 Agentic RAG 之间选择？","stratum":"compound","topic":"RAG architecture"}

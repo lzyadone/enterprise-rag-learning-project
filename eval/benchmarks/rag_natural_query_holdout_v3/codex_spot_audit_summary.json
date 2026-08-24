@@ -1,0 +1,43 @@
+{
+  "audit_type": "codex_assisted_spot_audit",
+  "not_human_gold_standard": true,
+  "sample_method": "deterministic SHA-256 stratified sample, 3 query/chunk pairs per LLM relevance grade",
+  "sample_rows": 12,
+  "sample_query_count": 10,
+  "llm_label_distribution": {
+    "0": 3,
+    "1": 3,
+    "2": 3,
+    "3": 3
+  },
+  "codex_exact_agreement": 9,
+  "codex_exact_agreement_rate": 0.75,
+  "codex_within_one": 12,
+  "codex_within_one_rate": 1.0,
+  "codex_severe_disagreements": 0,
+  "codex_severe_disagreement_rate": 0.0,
+  "downgrades": 3,
+  "upgrades": 0,
+  "issue_pattern": "Minor overgrading on chunks that answer only one part of a compound question or match a neighboring API rather than the requested API.",
+  "sensitivity_check": {
+    "temporary_qrels": "data/runtime/qrels_llm_codex_spot_corrected.jsonl",
+    "direct_hybrid": {
+      "recall_at_10": 1.0,
+      "mrr_at_10": 0.839,
+      "ndcg_at_10": 0.844
+    },
+    "planned_v3_hybrid": {
+      "recall_at_10": 1.0,
+      "mrr_at_10": 0.839,
+      "ndcg_at_10": 0.844
+    },
+    "conservative_auto": {
+      "recall_at_10": 1.0,
+      "mrr_at_10": 0.839,
+      "ndcg_at_10": 0.844,
+      "oracle_agreement": "31/32"
+    },
+    "decision_changed": false
+  },
+  "interpretation": "The assisted spot audit found no severe disagreement and no evidence that the holdout pass/fail decision is sensitive to sampled label corrections. It should be described as an independent assistant-assisted audit, not as completed human adjudication."
+}

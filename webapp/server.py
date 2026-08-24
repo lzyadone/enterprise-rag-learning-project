@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import os
 import sys
 import time
 import uuid
@@ -29,7 +30,9 @@ from src.cross_encoder_reranking import runtime_config as reranker_runtime_confi
 from src.deepseek_client import DEFAULT_BASE_URL, DEFAULT_MODEL, chat_completion, get_deepseek_api_key  # noqa: E402
 from src.long_memory import DEFAULT_NAMESPACE, LongMemoryStore, format_long_memory_context  # noqa: E402
 from src.ollama_http import generate  # noqa: E402
+from src.query_planning import plan_query, plan_query_v3  # noqa: E402
 from src.retrieval import RetrievedChunk, planned_retrieve, retrieve_with_strategy  # noqa: E402
+from src.retrieval_routing import RetrievalRouteDecision, route_retrieval  # noqa: E402
 
 
 STATIC_DIR = PROJECT_ROOT / "webapp" / "static"
@@ -135,6 +138,9 @@ class RAGRequestHandler(BaseHTTPRequestHandler):
                     "collection": STATE.collection_name,
                     "indexed_count": STATE.collection.count(),
                     "deepseek_key": bool(get_deepseek_api_key()),
+                    "default_llm_provider": default_llm_provider(),
+                    "default_retrieval_mode": default_retrieval_mode(),
+                    "planned_fusion_mode": default_planned_fusion_mode(),
                     "reranker": reranker_runtime_config(),
                     "long_memory": STATE.long_memory.stats(DEFAULT_NAMESPACE),
                 }
@@ -207,18 +213,22 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
     use_memory = bool(payload.get("use_memory", True))
     use_long_memory = bool(payload.get("use_long_memory", use_memory))
     memory_namespace = str(payload.get("memory_namespace") or DEFAULT_NAMESPACE)
-    llm_provider = str(payload.get("llm_provider") or ("deepseek" if get_deepseek_api_key() else "ollama"))
-    retrieval_mode = str(payload.get("retrieval_mode") or "planned")
-    retrieval_strategy = str(payload.get("retrieval_strategy") or "dense")
+    llm_provider = str(payload.get("llm_provider") or default_llm_provider())
+    requested_retrieval_mode = str(payload.get("retrieval_mode") or default_retrieval_mode())
+    planned_fusion_mode = str(payload.get("planned_fusion_mode") or default_planned_fusion_mode())
+    retrieval_strategy = str(payload.get("retrieval_strategy") or "hybrid")
     rerank_mode = str(payload.get("rerank_mode") or "lexical")
     embedding_model = str(payload.get("embedding_model") or "bge-m3")
     ollama_host = str(payload.get("ollama_host") or "http://127.0.0.1:11434")
     top_k = int(payload.get("top_k") or 5)
     candidate_k = int(payload.get("candidate_k") or 12)
+    latency_budget_ms = int(payload.get("latency_budget_ms") or 12000)
     max_context_chars = int(payload.get("max_context_chars") or 9000)
     audit_answer = bool(payload.get("audit_answer", True))
-    if retrieval_mode not in {"direct", "planned"}:
-        raise ValueError("retrieval_mode must be direct or planned")
+    if requested_retrieval_mode not in {"auto", "direct", "planned"}:
+        raise ValueError("retrieval_mode must be auto, direct, or planned")
+    if planned_fusion_mode not in {"legacy", "anchored", "conservative"}:
+        raise ValueError("planned_fusion_mode must be legacy, anchored, or conservative")
     if retrieval_strategy not in {"dense", "hybrid"}:
         raise ValueError("retrieval_strategy must be dense or hybrid")
 
@@ -238,32 +248,44 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
             long_memory_error = f"{type(exc).__name__}: {exc}"
 
     memory_answer_mode = is_memory_answer_query(query)
+    route_decision: RetrievalRouteDecision | None = None
+    selected_retrieval_mode = "memory" if memory_answer_mode else requested_retrieval_mode
     if memory_answer_mode:
         plan = None
         retrieved = []
-    elif retrieval_mode == "direct":
-        plan = None
-        retrieved = retrieve_with_strategy(
-            STATE.collection,
-            effective_query,
-            embedding_model,
-            ollama_host,
-            top_k=top_k,
-            candidate_k=candidate_k,
-            rerank_mode=rerank_mode,
-            retrieval_strategy=retrieval_strategy,
-        )
     else:
-        plan, retrieved = planned_retrieve(
-            STATE.collection,
-            effective_query,
-            embedding_model,
-            ollama_host,
-            top_k=top_k,
-            candidate_k=candidate_k,
-            rerank_mode=rerank_mode,
-            retrieval_strategy=retrieval_strategy,
+        routing_plan = build_routing_plan(effective_query, planned_fusion_mode)
+        route_decision = route_retrieval(
+            routing_plan,
+            requested_mode=requested_retrieval_mode,
+            latency_budget_ms=latency_budget_ms,
         )
+        selected_retrieval_mode = route_decision.selected_mode
+        if selected_retrieval_mode == "direct":
+            plan = None
+            retrieved = retrieve_with_strategy(
+                STATE.collection,
+                effective_query,
+                embedding_model,
+                ollama_host,
+                top_k=top_k,
+                candidate_k=candidate_k,
+                rerank_mode=rerank_mode,
+                retrieval_strategy=retrieval_strategy,
+            )
+        else:
+            plan, retrieved = planned_retrieve(
+                STATE.collection,
+                effective_query,
+                embedding_model,
+                ollama_host,
+                top_k=top_k,
+                candidate_k=candidate_k,
+                rerank_mode=rerank_mode,
+                retrieval_strategy=retrieval_strategy,
+                query_plan=routing_plan,
+                fusion_mode=planned_fusion_mode,
+            )
 
     short_memory_context = memory.context() if use_memory else ""
     memory_context = build_memory_context(short_memory_context, long_memory_hits)
@@ -273,7 +295,7 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
         prompt = build_memory_answer_prompt(query, memory_context)
     else:
         prompt = build_answer_prompt(query, assembled, answer_requirements=answer_requirements)
-    answer = generate_with_provider(
+    answer, generation = generate_with_provider(
         prompt,
         llm_provider=llm_provider,
         ollama_model=str(payload.get("ollama_model") or "qwen2.5:1.5b"),
@@ -290,12 +312,13 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
             audit = run_full_audit(query, assembled.evidence_context, answer, retrieved, plan, payload)
         if not memory_answer_mode and should_repair_answer(audit) and get_deepseek_api_key():
             try:
+                repair_model = str(payload.get("deepseek_repair_model") or DEFAULT_AUDIT_MODEL)
                 repaired_answer = repair_answer_with_deepseek(
                     query,
                     assembled.evidence_context,
                     answer,
                     audit,
-                    model=str(payload.get("deepseek_repair_model") or DEFAULT_AUDIT_MODEL),
+                    model=repair_model,
                     base_url=str(payload.get("deepseek_base_url") or DEFAULT_BASE_URL),
                 )
                 if repaired_answer.strip():
@@ -308,6 +331,7 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
                     if repaired_audit["repair"]["used"]:
                         answer = repaired_answer
                         audit = repaired_audit
+                        generation = mark_generation_repaired(generation, repair_model)
                     else:
                         audit["repair"] = {
                             "attempted": True,
@@ -355,22 +379,27 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
         "effective_query": effective_query,
         "settings": {
             "llm_provider": llm_provider,
-            "retrieval_mode": retrieval_mode,
+            "requested_retrieval_mode": requested_retrieval_mode,
+            "retrieval_mode": selected_retrieval_mode,
+            "planned_fusion_mode": planned_fusion_mode,
             "retrieval_strategy": retrieval_strategy,
             "rerank_mode": rerank_mode,
             "reranker": reranker_runtime_config() if rerank_mode == "cross_encoder" else None,
             "top_k": top_k,
             "candidate_k": candidate_k,
+            "latency_budget_ms": latency_budget_ms,
             "max_context_chars": max_context_chars,
             "use_memory": use_memory,
             "use_long_memory": use_long_memory,
             "memory_namespace": memory_namespace,
             "memory_answer_mode": memory_answer_mode,
         },
+        "routing": route_decision.as_dict() if route_decision else None,
         "plan": plan.as_dict() if plan else None,
         "sources": source_rows,
         "context": assembled.as_dict(),
         "answer": answer,
+        "generation": generation,
         "audit": audit,
         "memory": memory_payload,
         "timings": {"total_seconds": elapsed},
@@ -384,6 +413,31 @@ def build_effective_query(query: str, memory: ConversationMemory | None) -> str:
     if len(query) < 24 or any(marker in query for marker in ["这个", "上面", "刚才", "继续", "下一步", "它"]):
         return f"{recent_questions} {query}".strip()
     return query
+
+
+def default_llm_provider() -> str:
+    configured = os.getenv("RAG_DEFAULT_LLM_PROVIDER", "").strip().casefold()
+    if configured in {"deepseek", "ollama"}:
+        if configured == "deepseek" and not get_deepseek_api_key():
+            return "ollama"
+        return configured
+    return "ollama"
+
+
+def default_retrieval_mode() -> str:
+    configured = os.getenv("RAG_DEFAULT_RETRIEVAL_MODE", "direct").strip().casefold()
+    return configured if configured in {"auto", "direct", "planned"} else "direct"
+
+
+def default_planned_fusion_mode() -> str:
+    configured = os.getenv("RAG_PLANNED_FUSION_MODE", "conservative").strip().casefold()
+    return configured if configured in {"legacy", "anchored", "conservative"} else "conservative"
+
+
+def build_routing_plan(query: str, planned_fusion_mode: str):
+    if planned_fusion_mode == "conservative":
+        return plan_query_v3(query)
+    return plan_query(query)
 
 
 def build_memory_context(short_memory_context: str, long_memory_hits: list[Any]) -> str:
@@ -459,27 +513,18 @@ def generate_with_provider(
     ollama_host: str,
     deepseek_model: str,
     deepseek_base_url: str,
-) -> str:
+) -> tuple[str, dict[str, Any]]:
     if llm_provider == "ollama":
-        return generate(prompt, ollama_model, ollama_host, num_ctx=8192, num_predict=1200)
+        return generate(prompt, ollama_model, ollama_host, num_ctx=8192, num_predict=1200), {
+            "requested_provider": "ollama",
+            "provider": "ollama",
+            "model": ollama_model,
+            "provider_path": [f"ollama:{ollama_model}"],
+            "fallback_used": False,
+        }
     if llm_provider == "deepseek":
-        answer = chat_completion(
-            [
-                {
-                    "role": "system",
-                    "content": "你是严谨的大模型工程知识库助手。必须只根据检索资料回答。",
-                },
-                {"role": "user", "content": prompt},
-            ],
-            model=deepseek_model,
-            base_url=deepseek_base_url,
-            temperature=0.1,
-            max_tokens=1600,
-        )
-        if answer.strip():
-            return answer
-        if deepseek_model != "deepseek-chat":
-            fallback_answer = chat_completion(
+        try:
+            answer = chat_completion(
                 [
                     {
                         "role": "system",
@@ -487,15 +532,98 @@ def generate_with_provider(
                     },
                     {"role": "user", "content": prompt},
                 ],
-                model="deepseek-chat",
+                model=deepseek_model,
                 base_url=deepseek_base_url,
                 temperature=0.1,
-                max_tokens=1800,
+                max_tokens=1600,
             )
-            if fallback_answer.strip():
-                return fallback_answer
-        raise RuntimeError("DeepSeek returned an empty answer")
+            if answer.strip():
+                return answer, {
+                    "requested_provider": "deepseek",
+                    "provider": "deepseek",
+                    "model": deepseek_model,
+                    "provider_path": [f"deepseek:{deepseek_model}"],
+                    "fallback_used": False,
+                }
+            if deepseek_model != "deepseek-chat":
+                fallback_answer = chat_completion(
+                    [
+                        {
+                            "role": "system",
+                            "content": "你是严谨的大模型工程知识库助手。必须只根据检索资料回答。",
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    model="deepseek-chat",
+                    base_url=deepseek_base_url,
+                    temperature=0.1,
+                    max_tokens=1800,
+                )
+                if fallback_answer.strip():
+                    return fallback_answer, {
+                        "requested_provider": "deepseek",
+                        "provider": "deepseek",
+                        "model": "deepseek-chat",
+                        "provider_path": [
+                            f"deepseek:{deepseek_model}",
+                            "deepseek:deepseek-chat",
+                        ],
+                        "fallback_used": True,
+                        "fallback_reason": f"{deepseek_model} returned empty content",
+                    }
+            raise RuntimeError("DeepSeek returned an empty answer")
+        except Exception as exc:  # noqa: BLE001
+            if not should_fallback_to_ollama(exc):
+                raise
+            fallback_answer = generate(prompt, ollama_model, ollama_host, num_ctx=8192, num_predict=1200)
+            return fallback_answer, {
+                "requested_provider": "deepseek",
+                "provider": "ollama",
+                "model": ollama_model,
+                "provider_path": [f"deepseek:{deepseek_model}", f"ollama:{ollama_model}"],
+                "fallback_used": True,
+                "fallback_reason": generation_fallback_reason(exc),
+                "cloud_error_type": type(exc).__name__,
+            }
     raise ValueError(f"Unsupported llm_provider: {llm_provider}")
+
+
+def should_fallback_to_ollama(exc: Exception) -> bool:
+    message = str(exc).casefold()
+    policy_markers = [
+        "invalid prompt",
+        "violating our usage policy",
+        "policy",
+        "safety",
+        "content_filter",
+        "content filter",
+        "prompt was flagged",
+        "returned an empty answer",
+    ]
+    return any(marker in message for marker in policy_markers)
+
+
+def generation_fallback_reason(exc: Exception) -> str:
+    if "empty answer" in str(exc).casefold():
+        return "cloud provider returned empty content"
+    return "cloud provider rejected the prompt or returned a policy error"
+
+
+def mark_generation_repaired(generation: dict[str, Any], model: str) -> dict[str, Any]:
+    result = dict(generation)
+    provider_path = list(result.get("provider_path") or [str(result.get("provider") or "unknown")])
+    provider_path.append(f"deepseek-repair:{model}")
+    result.update(
+        {
+            "provider": "deepseek",
+            "model": model,
+            "provider_path": provider_path,
+            "repair_used": True,
+            "repair_provider": "deepseek",
+            "repair_model": model,
+        }
+    )
+    return result
 
 
 def run_full_audit(

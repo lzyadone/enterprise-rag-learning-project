@@ -1,0 +1,30 @@
+{
+  "dataset": "eval\\datasets\\rag_routing_holdout_v2.jsonl",
+  "collection": "llm_rag_docs",
+  "pool_depth_per_system": 10,
+  "systems": [
+    "direct_hybrid",
+    "planned_v2_hybrid"
+  ],
+  "cases": 20,
+  "pool": {
+    "total_query_chunk_pairs": 217,
+    "min_candidates_per_query": 10,
+    "max_candidates_per_query": 12,
+    "avg_candidates_per_query": 10.85,
+    "system_unique_contributions": {
+      "direct_hybrid": 17,
+      "planned_v2_hybrid": 17
+    },
+    "legacy_judged_not_in_current_top_depth": 0
+  },
+  "judgments": {
+    "inherited": 0,
+    "total_required": 217,
+    "remaining": 217,
+    "completion_rate": 0.0
+  },
+  "candidate_pools": "eval\\routing_holdout_v2\\candidate_pools.jsonl",
+  "manifest": "eval\\routing_holdout_v2\\pool_manifest.jsonl",
+  "qrels": null
+}

@@ -1,0 +1,55 @@
+{
+  "model": "deepseek-v4-flash",
+  "dataset": "eval\\datasets\\rag_natural_query_dev_v1_raw.jsonl",
+  "count": 38,
+  "intended_route_counts": {
+    "direct": 20,
+    "planned": 18
+  },
+  "stratum_counts": {
+    "focused": 20,
+    "compound": 18
+  },
+  "persona_counts": {
+    "刚入门的学习者": 6,
+    "正在接入知识库的开发者": 12,
+    "排查线上问题的工程师": 7,
+    "负责方案选型的技术负责人": 4,
+    "负责效果验收的测试或产品人员": 6,
+    "维护内部资料的数据工程师": 3
+  },
+  "topic_counts": {
+    "vector database": 13,
+    "embedding": 4,
+    "reranking": 9,
+    "local model": 1,
+    "chunking": 4,
+    "document loading": 3,
+    "RAG basics": 2,
+    "retrieval": 14,
+    "ingestion and indexing": 9,
+    "evaluation": 8,
+    "RAG failures": 7,
+    "query pipeline": 5
+  },
+  "question_length": {
+    "min": 35,
+    "max": 162,
+    "median": 81.5
+  },
+  "questions_with_context_marker": 38,
+  "max_similarity_to_prior_datasets": 0.7771,
+  "similarity_rejection_threshold": 0.84,
+  "semantic_similarity_rejection_threshold": 0.93,
+  "max_accepted_semantic_similarity_to_seen": 0.9268,
+  "batch_attempts": {
+    "direct_everyday": 0,
+    "direct_configuration": 0,
+    "direct_data_operation": 0,
+    "direct_measurement": 0,
+    "planned_mixed_scenarios": 0
+  },
+  "checkpoint_rows_reused": 38,
+  "rejected_reasons": {},
+  "boundary": "DeepSeek generated these questions from scenario and topic cards. Intended route is a development label for route diagnostics, not retrieval-quality ground truth or a holdout result."
+}

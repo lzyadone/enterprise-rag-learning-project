@@ -32,5 +32,8 @@ build/
 # Large eval records can be regenerated; keep summary.md files for portfolio notes.
 eval/**/results.jsonl
 eval/**/candidate_pools.jsonl
+eval/**/system_runs.jsonl
+eval/**/unjudged_candidates.jsonl
+eval/**/unjudged_candidate_pools.jsonl
 eval/*badcases/
 eval/cross_encoder_reranker_experiment/

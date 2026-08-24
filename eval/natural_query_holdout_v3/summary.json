@@ -1,0 +1,30 @@
+{
+  "dataset": "eval\\datasets\\rag_natural_query_holdout_v3.jsonl",
+  "collection": "llm_rag_docs",
+  "pool_depth_per_system": 10,
+  "systems": [
+    "direct_hybrid",
+    "planned_v3_hybrid"
+  ],
+  "cases": 32,
+  "pool": {
+    "total_query_chunk_pairs": 320,
+    "min_candidates_per_query": 10,
+    "max_candidates_per_query": 10,
+    "avg_candidates_per_query": 10,
+    "system_unique_contributions": {
+      "direct_hybrid": 0,
+      "planned_v3_hybrid": 0
+    },
+    "legacy_judged_not_in_current_top_depth": 0
+  },
+  "judgments": {
+    "inherited": 0,
+    "total_required": 320,
+    "remaining": 320,
+    "completion_rate": 0.0
+  },
+  "candidate_pools": "eval\\natural_query_holdout_v3\\candidate_pools.jsonl",
+  "manifest": "eval\\natural_query_holdout_v3\\pool_manifest.jsonl",
+  "qrels": null
+}

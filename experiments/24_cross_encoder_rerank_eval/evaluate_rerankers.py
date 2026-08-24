@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import gc
 import json
-import math
 import statistics
 import sys
 import time
@@ -22,6 +21,11 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.cross_encoder_reranking import cross_encoder_rerank, get_cross_encoder, runtime_config  # noqa: E402
 from src.ollama_http import unload_embedding_model  # noqa: E402
 from src.query_planning import QueryPlan, plan_query  # noqa: E402
+from src.retrieval_judgments import (  # noqa: E402
+    load_candidate_pools as load_judgment_candidate_pools,
+    load_complete_qrels,
+)
+from src.retrieval_metrics import evaluate_retrieval_ranking  # noqa: E402
 from src.retrieval import (  # noqa: E402
     DEFAULT_CHUNKS_PATH,
     RetrievedChunk,
@@ -43,6 +47,12 @@ MODEL_SPECS = {
     "cross_encoder_fused": ("transformers", "BAAI/bge-reranker-v2-m3"),
 }
 RERANK_MODES = ["none", "lexical", *MODEL_SPECS]
+DEFAULT_RERANK_MODES = [
+    "none",
+    "lexical",
+    "cross_encoder_multilingual",
+    "cross_encoder_fused",
+]
 
 
 def parse_args() -> argparse.Namespace:
@@ -59,6 +69,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mode", action="append", choices=RERANK_MODES, default=[])
     parser.add_argument("--case-id", action="append", default=[])
     parser.add_argument("--candidate-pools", type=Path)
+    parser.add_argument("--qrels", type=Path)
+    parser.add_argument("--relevant-threshold", type=int, default=2)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     return parser.parse_args()
 
@@ -72,7 +84,7 @@ def configure_console_output() -> None:
 def main() -> None:
     configure_console_output()
     args = parse_args()
-    modes = args.mode or RERANK_MODES
+    modes = args.mode or DEFAULT_RERANK_MODES
     cases = load_cases(args.dataset, set(args.case_id))
     if not cases:
         raise SystemExit("No reranker evaluation cases selected.")
@@ -88,6 +100,11 @@ def main() -> None:
         save_candidate_pools(candidate_pool_path, case_pools)
         unload_embedding_model(args.embedding_model, args.ollama_host)
 
+    human_grades = None
+    if args.qrels:
+        judgment_pools = load_judgment_candidate_pools(candidate_pool_path)
+        human_grades = load_complete_qrels(args.qrels, judgment_pools)
+
     del collection
     del client
     gc.collect()
@@ -95,7 +112,10 @@ def main() -> None:
 
     records: list[dict[str, Any]] = []
     for case_index, (case, candidate_pool, retrieval_seconds, plan) in enumerate(case_pools, start=1):
-        pool_grades = relevance_grades(case, candidate_pool)
+        case_id = str(case["id"])
+        pool_grades = (
+            human_grades[case_id] if human_grades is not None else relevance_grades(case, candidate_pool)
+        )
 
         for mode in modes:
             candidates = clone_chunks(candidate_pool)
@@ -109,7 +129,13 @@ def main() -> None:
                 plan,
             )
             rerank_seconds = time.perf_counter() - rerank_started
-            evaluation = evaluate_ranked(case, ranked, pool_grades, args.top_k)
+            evaluation = evaluate_ranked(
+                case,
+                ranked,
+                pool_grades,
+                args.top_k,
+                args.relevant_threshold,
+            )
             records.append(
                 {
                     "case_id": case["id"],
@@ -119,13 +145,13 @@ def main() -> None:
                     "retrieval_seconds": round(retrieval_seconds, 4),
                     "rerank_seconds": round(rerank_seconds, 4),
                     "evaluation": evaluation,
-                    "results": chunks_to_rows(ranked, case),
+                    "results": chunks_to_rows(ranked, pool_grades),
                 }
             )
             print(
                 f"[{case_index}/{len(cases)}] {case['id']} {mode} "
-                f"both={evaluation['both_pass']} ndcg={evaluation['ndcg_at_k']:.3f} "
-                f"mrr={evaluation['category_reciprocal_rank']:.3f} rerank={rerank_seconds:.2f}s",
+                f"recall={evaluation['recall_at_k']:.3f} ndcg={evaluation['ndcg_at_k']:.3f} "
+                f"mrr={evaluation['reciprocal_rank']:.3f} rerank={rerank_seconds:.2f}s",
                 flush=True,
             )
 
@@ -144,8 +170,8 @@ def main() -> None:
     print("\n=== Summary ===")
     for row in summary["modes"]:
         print(
-            f"{row['mode']}: both={row['both_pass_rate']:.2%} ndcg={row['avg_ndcg_at_k']:.3f} "
-            f"mrr={row['category_mrr']:.3f} recall={row['avg_source_term_recall']:.3f} "
+            f"{row['mode']}: recall={row['avg_recall_at_k']:.3f} ndcg={row['avg_ndcg_at_k']:.3f} "
+            f"mrr={row['mrr']:.3f} precision={row['avg_precision_at_k']:.3f} "
             f"rerank={row['avg_rerank_seconds']:.2f}s"
         )
     print(f"summary: {args.output_dir / 'summary.md'}")
@@ -301,6 +327,7 @@ def evaluate_ranked(
     ranked: list[RetrievedChunk],
     pool_grades: dict[str, float],
     top_k: int,
+    relevant_threshold: int,
 ) -> dict[str, Any]:
     selected = ranked[:top_k]
     expected_categories = [str(value) for value in case.get("expected_categories") or []]
@@ -325,8 +352,12 @@ def evaluate_ranked(
         ),
         None,
     )
-    ranked_grades = [pool_grades.get(chunk.chunk_id, 0.0) for chunk in selected]
-    ideal_grades = sorted(pool_grades.values(), reverse=True)[:top_k]
+    retrieval_metrics = evaluate_retrieval_ranking(
+        [chunk.chunk_id for chunk in ranked],
+        pool_grades,
+        k=top_k,
+        relevant_threshold=relevant_threshold,
+    )
     return {
         "category_pass": category_pass,
         "category_hits": category_hits,
@@ -336,9 +367,8 @@ def evaluate_ranked(
         "both_pass": category_pass and source_terms_pass,
         "first_category_rank": first_category_rank,
         "category_reciprocal_rank": round(1.0 / first_category_rank, 4) if first_category_rank else 0.0,
-        "ndcg_at_k": round(ndcg(ranked_grades, ideal_grades), 4),
-        "top1_relevance_grade": round(ranked_grades[0], 4) if ranked_grades else 0.0,
         "unique_categories": len(set(actual_categories)),
+        **retrieval_metrics,
     }
 
 
@@ -355,15 +385,6 @@ def relevance_grades(case: dict[str, Any], chunks: list[RetrievedChunk]) -> dict
     return grades
 
 
-def ndcg(ranked_grades: list[float], ideal_grades: list[float]) -> float:
-    ideal = discounted_cumulative_gain(ideal_grades)
-    return discounted_cumulative_gain(ranked_grades) / ideal if ideal > 0 else 1.0
-
-
-def discounted_cumulative_gain(grades: list[float]) -> float:
-    return sum((2**grade - 1) / math.log2(rank + 1) for rank, grade in enumerate(grades, start=1))
-
-
 def searchable_text(chunk: RetrievedChunk) -> str:
     return "\n".join(
         [
@@ -375,8 +396,10 @@ def searchable_text(chunk: RetrievedChunk) -> str:
     )
 
 
-def chunks_to_rows(chunks: list[RetrievedChunk], case: dict[str, Any]) -> list[dict[str, Any]]:
-    grades = relevance_grades(case, chunks)
+def chunks_to_rows(
+    chunks: list[RetrievedChunk],
+    grades: dict[str, float],
+) -> list[dict[str, Any]]:
     return [
         {
             "rank": rank,
@@ -413,6 +436,10 @@ def build_summary(
                     sum(1 for record in selected if record["evaluation"]["both_pass"]) / count, 4
                 ),
                 "avg_ndcg_at_k": mean_metric(selected, "ndcg_at_k"),
+                "avg_recall_at_k": mean_metric(selected, "recall_at_k"),
+                "avg_precision_at_k": mean_metric(selected, "precision_at_k"),
+                "hit_rate_at_k": mean_metric(selected, "hit_at_k"),
+                "mrr": mean_metric(selected, "reciprocal_rank"),
                 "category_mrr": mean_metric(selected, "category_reciprocal_rank"),
                 "avg_source_term_recall": mean_metric(selected, "source_term_recall"),
                 "avg_top1_relevance_grade": mean_metric(selected, "top1_relevance_grade"),
@@ -427,6 +454,9 @@ def build_summary(
         "retrieval_strategy": f"{args.retrieval_mode}-hybrid",
         "top_k": args.top_k,
         "candidate_k": args.candidate_k,
+        "relevance_source": "human_qrels" if args.qrels else "automatic_proxy",
+        "qrels": portable_path(args.qrels) if args.qrels else None,
+        "relevant_threshold": args.relevant_threshold,
         "rerankers": {
             mode: portable_runtime_config(runtime_config(model_name, backend=backend))
             for mode, (backend, model_name) in MODEL_SPECS.items()
@@ -434,7 +464,11 @@ def build_summary(
         },
         "model_warmup_seconds": {mode: round(seconds, 4) for mode, seconds in model_load_seconds.items()},
         "modes": mode_rows,
-        "metric_note": "nDCG uses category and evidence-term relevance grades within each fixed candidate pool.",
+        "metric_note": (
+            "Metrics use complete human qrels within each fixed candidate pool."
+            if args.qrels
+            else "Metrics use category and evidence-term proxy grades within each fixed candidate pool."
+        ),
     }
 
 
@@ -472,27 +506,30 @@ def summary_markdown(summary: dict[str, Any], records: list[dict[str, Any]]) -> 
         f"- collection chunks: {summary['collection_count']}",
         f"- retrieval strategy: {summary['retrieval_strategy']}",
         f"- top_k/candidate_k: {summary['top_k']}/{summary['candidate_k']}",
+        f"- relevance source: {summary['relevance_source']}",
+        f"- relevant threshold: >= {summary['relevant_threshold']}",
+        f"- qrels: {summary['qrels']}",
         f"- rerankers: {', '.join(reranker_descriptions)}",
         f"- warmup seconds: {json.dumps(summary['model_warmup_seconds'], ensure_ascii=False)}",
-        "- nDCG relevance: category match plus expected evidence-term coverage within the fixed pool",
+        f"- metric note: {summary['metric_note']}",
         "",
         "## Results",
         "",
-        "| mode | both pass | nDCG@k | category MRR | term recall | top-1 grade | categories | rerank seconds |",
+        "| mode | Recall@k | Precision@k | MRR | nDCG@k | top-1 grade | proxy both pass | rerank seconds |",
         "|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for row in summary["modes"]:
         lines.append(
-            f"| {row['mode']} | {row['both_pass_rate']:.2%} | {row['avg_ndcg_at_k']:.3f} | "
-            f"{row['category_mrr']:.3f} | {row['avg_source_term_recall']:.3f} | "
-            f"{row['avg_top1_relevance_grade']:.3f} | {row['avg_unique_categories']:.2f} | "
+            f"| {row['mode']} | {row['avg_recall_at_k']:.3f} | {row['avg_precision_at_k']:.3f} | "
+            f"{row['mrr']:.3f} | {row['avg_ndcg_at_k']:.3f} | "
+            f"{row['avg_top1_relevance_grade']:.3f} | {row['both_pass_rate']:.2%} | "
             f"{row['avg_rerank_seconds']:.2f} |"
         )
 
     lines.extend(
         [
             "",
-            "## Per-case nDCG@k",
+        "## Per-case nDCG@k / Recall@k",
             "",
             "| case | " + " | ".join(row["mode"] for row in summary["modes"]) + " |",
             "|---|" + "---:|" * len(summary["modes"]),
@@ -500,7 +537,11 @@ def summary_markdown(summary: dict[str, Any], records: list[dict[str, Any]]) -> 
     )
     by_key = {(record["case_id"], record["mode"]): record for record in records}
     for case_id in summary["case_ids"]:
-        values = [f"{by_key[(case_id, row['mode'])]['evaluation']['ndcg_at_k']:.3f}" for row in summary["modes"]]
+        values = [
+            f"{by_key[(case_id, row['mode'])]['evaluation']['ndcg_at_k']:.3f} / "
+            f"{by_key[(case_id, row['mode'])]['evaluation']['recall_at_k']:.3f}"
+            for row in summary["modes"]
+        ]
         lines.append(f"| {case_id} | " + " | ".join(values) + " |")
 
     lines.extend(
@@ -508,8 +549,13 @@ def summary_markdown(summary: dict[str, Any], records: list[dict[str, Any]]) -> 
             "",
             "## Interpretation Boundary",
             "",
-            "These are automatic pool-based relevance grades, not exhaustive human judgments over all 938 chunks.",
-            "Use them to compare ordering on the same candidates; inspect changed rankings before deciding the default reranker.",
+            (
+                "Human qrels exhaustively cover each fixed 16-candidate pool, but not all collection chunks."
+                if summary["relevance_source"] == "human_qrels"
+                else "These are automatic pool-based relevance grades, not human judgments."
+            ),
+            "Recall@k therefore measures reranking recall inside the judged pool, not end-to-end corpus recall.",
+            "Use this report to choose ordering; evaluate candidate generation on a judged union pool separately.",
             "",
         ]
     )
