@@ -10,7 +10,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from rank_bm25 import BM25Okapi
+try:
+    from rank_bm25 import BM25Okapi as RankBM25Okapi
+except ImportError:  # pragma: no cover - covered by fallback behavior.
+    RankBM25Okapi = None
 
 from src.reranking import TERM_ALIASES
 
@@ -36,7 +39,7 @@ class BM25ChunkIndex:
             raise ValueError("BM25 index requires at least one chunk")
         self.rows = rows
         corpus = [tokenize(build_index_text(row)) for row in rows]
-        self.model = BM25Okapi(corpus)
+        self.model = RankBM25Okapi(corpus) if RankBM25Okapi is not None else SimpleBM25Okapi(corpus)
 
     @classmethod
     def from_jsonl(cls, path: Path) -> BM25ChunkIndex:
@@ -130,3 +133,41 @@ def tokenize(text: str) -> list[str]:
         if len(span) >= 3:
             tokens.extend(span[index : index + 3] for index in range(len(span) - 2))
     return tokens
+
+
+class SimpleBM25Okapi:
+    """Small BM25 fallback used when rank-bm25 is not installed."""
+
+    def __init__(self, corpus: list[list[str]], *, k1: float = 1.5, b: float = 0.75) -> None:
+        self.corpus = corpus
+        self.k1 = k1
+        self.b = b
+        self.doc_freqs = [Counter(document) for document in corpus]
+        self.doc_lens = [len(document) for document in corpus]
+        self.avgdl = sum(self.doc_lens) / max(1, len(self.doc_lens))
+        self.idf = self._build_idf()
+
+    def _build_idf(self) -> dict[str, float]:
+        import math
+
+        doc_count = len(self.corpus)
+        document_frequency: Counter[str] = Counter()
+        for document in self.corpus:
+            document_frequency.update(set(document))
+        return {
+            term: math.log(1 + (doc_count - frequency + 0.5) / (frequency + 0.5))
+            for term, frequency in document_frequency.items()
+        }
+
+    def get_scores(self, query_tokens: list[str]) -> list[float]:
+        scores: list[float] = []
+        for term_counts, doc_len in zip(self.doc_freqs, self.doc_lens):
+            score = 0.0
+            norm = self.k1 * (1 - self.b + self.b * doc_len / max(1.0, self.avgdl))
+            for token in query_tokens:
+                frequency = term_counts.get(token, 0)
+                if not frequency:
+                    continue
+                score += self.idf.get(token, 0.0) * (frequency * (self.k1 + 1)) / (frequency + norm)
+            scores.append(score)
+        return scores

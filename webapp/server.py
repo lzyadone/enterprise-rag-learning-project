@@ -295,7 +295,7 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
         prompt = build_memory_answer_prompt(query, memory_context)
     else:
         prompt = build_answer_prompt(query, assembled, answer_requirements=answer_requirements)
-    answer = generate_with_provider(
+    answer, generation = generate_with_provider(
         prompt,
         llm_provider=llm_provider,
         ollama_model=str(payload.get("ollama_model") or "qwen2.5:1.5b"),
@@ -312,12 +312,13 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
             audit = run_full_audit(query, assembled.evidence_context, answer, retrieved, plan, payload)
         if not memory_answer_mode and should_repair_answer(audit) and get_deepseek_api_key():
             try:
+                repair_model = str(payload.get("deepseek_repair_model") or DEFAULT_AUDIT_MODEL)
                 repaired_answer = repair_answer_with_deepseek(
                     query,
                     assembled.evidence_context,
                     answer,
                     audit,
-                    model=str(payload.get("deepseek_repair_model") or DEFAULT_AUDIT_MODEL),
+                    model=repair_model,
                     base_url=str(payload.get("deepseek_base_url") or DEFAULT_BASE_URL),
                 )
                 if repaired_answer.strip():
@@ -330,6 +331,7 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
                     if repaired_audit["repair"]["used"]:
                         answer = repaired_answer
                         audit = repaired_audit
+                        generation = mark_generation_repaired(generation, repair_model)
                     else:
                         audit["repair"] = {
                             "attempted": True,
@@ -397,6 +399,7 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
         "sources": source_rows,
         "context": assembled.as_dict(),
         "answer": answer,
+        "generation": generation,
         "audit": audit,
         "memory": memory_payload,
         "timings": {"total_seconds": elapsed},
@@ -418,7 +421,7 @@ def default_llm_provider() -> str:
         if configured == "deepseek" and not get_deepseek_api_key():
             return "ollama"
         return configured
-    return "deepseek" if get_deepseek_api_key() else "ollama"
+    return "ollama"
 
 
 def default_retrieval_mode() -> str:
@@ -504,27 +507,18 @@ def generate_with_provider(
     ollama_host: str,
     deepseek_model: str,
     deepseek_base_url: str,
-) -> str:
+) -> tuple[str, dict[str, Any]]:
     if llm_provider == "ollama":
-        return generate(prompt, ollama_model, ollama_host, num_ctx=8192, num_predict=1200)
+        return generate(prompt, ollama_model, ollama_host, num_ctx=8192, num_predict=1200), {
+            "requested_provider": "ollama",
+            "provider": "ollama",
+            "model": ollama_model,
+            "provider_path": [f"ollama:{ollama_model}"],
+            "fallback_used": False,
+        }
     if llm_provider == "deepseek":
-        answer = chat_completion(
-            [
-                {
-                    "role": "system",
-                    "content": "你是严谨的大模型工程知识库助手。必须只根据检索资料回答。",
-                },
-                {"role": "user", "content": prompt},
-            ],
-            model=deepseek_model,
-            base_url=deepseek_base_url,
-            temperature=0.1,
-            max_tokens=1600,
-        )
-        if answer.strip():
-            return answer
-        if deepseek_model != "deepseek-chat":
-            fallback_answer = chat_completion(
+        try:
+            answer = chat_completion(
                 [
                     {
                         "role": "system",
@@ -532,15 +526,98 @@ def generate_with_provider(
                     },
                     {"role": "user", "content": prompt},
                 ],
-                model="deepseek-chat",
+                model=deepseek_model,
                 base_url=deepseek_base_url,
                 temperature=0.1,
-                max_tokens=1800,
+                max_tokens=1600,
             )
-            if fallback_answer.strip():
-                return fallback_answer
-        raise RuntimeError("DeepSeek returned an empty answer")
+            if answer.strip():
+                return answer, {
+                    "requested_provider": "deepseek",
+                    "provider": "deepseek",
+                    "model": deepseek_model,
+                    "provider_path": [f"deepseek:{deepseek_model}"],
+                    "fallback_used": False,
+                }
+            if deepseek_model != "deepseek-chat":
+                fallback_answer = chat_completion(
+                    [
+                        {
+                            "role": "system",
+                            "content": "你是严谨的大模型工程知识库助手。必须只根据检索资料回答。",
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    model="deepseek-chat",
+                    base_url=deepseek_base_url,
+                    temperature=0.1,
+                    max_tokens=1800,
+                )
+                if fallback_answer.strip():
+                    return fallback_answer, {
+                        "requested_provider": "deepseek",
+                        "provider": "deepseek",
+                        "model": "deepseek-chat",
+                        "provider_path": [
+                            f"deepseek:{deepseek_model}",
+                            "deepseek:deepseek-chat",
+                        ],
+                        "fallback_used": True,
+                        "fallback_reason": f"{deepseek_model} returned empty content",
+                    }
+            raise RuntimeError("DeepSeek returned an empty answer")
+        except Exception as exc:  # noqa: BLE001
+            if not should_fallback_to_ollama(exc):
+                raise
+            fallback_answer = generate(prompt, ollama_model, ollama_host, num_ctx=8192, num_predict=1200)
+            return fallback_answer, {
+                "requested_provider": "deepseek",
+                "provider": "ollama",
+                "model": ollama_model,
+                "provider_path": [f"deepseek:{deepseek_model}", f"ollama:{ollama_model}"],
+                "fallback_used": True,
+                "fallback_reason": generation_fallback_reason(exc),
+                "cloud_error_type": type(exc).__name__,
+            }
     raise ValueError(f"Unsupported llm_provider: {llm_provider}")
+
+
+def should_fallback_to_ollama(exc: Exception) -> bool:
+    message = str(exc).casefold()
+    policy_markers = [
+        "invalid prompt",
+        "violating our usage policy",
+        "policy",
+        "safety",
+        "content_filter",
+        "content filter",
+        "prompt was flagged",
+        "returned an empty answer",
+    ]
+    return any(marker in message for marker in policy_markers)
+
+
+def generation_fallback_reason(exc: Exception) -> str:
+    if "empty answer" in str(exc).casefold():
+        return "cloud provider returned empty content"
+    return "cloud provider rejected the prompt or returned a policy error"
+
+
+def mark_generation_repaired(generation: dict[str, Any], model: str) -> dict[str, Any]:
+    result = dict(generation)
+    provider_path = list(result.get("provider_path") or [str(result.get("provider") or "unknown")])
+    provider_path.append(f"deepseek-repair:{model}")
+    result.update(
+        {
+            "provider": "deepseek",
+            "model": model,
+            "provider_path": provider_path,
+            "repair_used": True,
+            "repair_provider": "deepseek",
+            "repair_model": model,
+        }
+    )
+    return result
 
 
 def run_full_audit(

@@ -199,6 +199,12 @@ function renderPlan(data) {
   const plan = data.plan;
   const settings = data.settings;
   const routing = data.routing;
+  const generation = data.generation || {};
+  const providerLabel = generation.provider_path?.length
+    ? generation.provider_path.join(" -> ")
+    : generation.fallback_used
+      ? `${generation.requested_provider || settings.llm_provider} -> ${generation.provider || "unknown"}`
+      : (generation.provider || settings.llm_provider);
   const routeReasonLabels = {
     forced_by_user: "用户强制指定",
     complexity_threshold_reached: "复杂度达到规划阈值",
@@ -220,7 +226,8 @@ function renderPlan(data) {
       <b>planned fusion</b><span>${escapeHtml(settings.planned_fusion_mode || "legacy")}</span>
       <b>channel</b><span>${escapeHtml(settings.retrieval_strategy || "dense")}</span>
       <b>effective query</b><span>${escapeHtml(data.effective_query)}</span>
-      <b>provider</b><span>${escapeHtml(settings.llm_provider)}</span>
+      <b>provider</b><span>${escapeHtml(providerLabel)}</span>
+      ${generation.fallback_reason ? `<b>fallback</b><span>${escapeHtml(generation.fallback_reason)}</span>` : ""}
       <b>rerank</b><span>${escapeHtml(settings.rerank_mode)}</span>
       ${settings.reranker ? `<b>reranker model</b><span>${escapeHtml(settings.reranker.model)}</span>` : ""}
       ${settings.reranker ? `<b>reranker runtime</b><span>${escapeHtml(`${settings.reranker.backend} / ${settings.reranker.device}`)}</span>` : ""}
