@@ -1,0 +1,38 @@
+{
+  "role": "holdout",
+  "frozen_before_retrieval": true,
+  "generator": "deepseek-v4-flash",
+  "critic": "deepseek-v4-flash",
+  "embedding_model": "bge-m3",
+  "seed": 20260824,
+  "questions": 32,
+  "strata": {
+    "focused": 16,
+    "compound": 16
+  },
+  "topics": {
+    "RAG overview": 3,
+    "document loading": 2,
+    "chunking": 4,
+    "ingestion": 3,
+    "indexing": 2,
+    "embedding": 3,
+    "retrieval": 8,
+    "reranking": 3,
+    "vector db": 5,
+    "querying": 2,
+    "evaluation": 7,
+    "local model": 2,
+    "RAG challenges": 4
+  },
+  "source_anchor_chunks": 48,
+  "unique_source_anchor_chunks": 48,
+  "max_lexical_similarity_to_prior": 0.5741,
+  "max_semantic_similarity_to_seen": 0.9053,
+  "rejected": {
+    "critic_stratum_mismatch": 4
+  },
+  "dataset_sha256": "85d8ff3c55183ba83ed6d116438d9fcbac36e0e6e31af3ef4beb1f5e16b18b01",
+  "source_anchors_sha256": "daf3cd40a626d4609de8b049feef8ef08cd0c0aa918a5f459e55bac81aeb9805",
+  "boundary": "Questions were generated from frozen source excerpts before retrieval. Source anchors prove intended answerability but are not relevance judgments and must not be supplied to candidate generators or the qrels judge."
+}
