@@ -6,16 +6,18 @@
 
 `C:\Users\Lenovo\Desktop\大模型官方课程-视频资料\学习产出\enterprise-rag-learning-project`
 
-当前开发分支：`feature/rag-evaluation-benchmark`
+当前开发分支：`main`
 
-最近已推送提交：`620f4a3 Harden local generation fallback`
+最近已推送提交：`9859ad7 Merge planner v3 evaluation benchmark`
 
-当前本地分支比远程领先 4 个提交：
+Planner v3 阶段的主要提交已全部合并并推送到 `main`：
 
 - `6fc4d22 Freeze planner v3 holdout dataset`
 - `127dfbc Evaluate planner v3 holdout`
 - `cc4f242 Add assisted qrels spot audit`
 - `41e7689 Expose planner v3 planned mode in web`
+- `5a16a2a Update project handoff after planner v3 validation`
+- `9859ad7 Merge planner v3 evaluation benchmark`
 
 本文档不包含任何密钥、token、环境变量值、`.env` 内容或其他凭据。
 
@@ -168,7 +170,7 @@
 
 ## 4. 当前未完成工作
 
-P0 独立验证集、P1 独立检索评测和 P2 Web 实验发布决定均已完成。当前没有阻塞 Planner v3 实验模式的缺陷；剩余工作属于交接、远程同步和后续工程优化。
+P0 独立验证集、P1 独立检索评测和 P2 Web 实验发布决定均已完成。Planner v3 阶段已经合并到 `main` 并同步到远程。当前没有阻塞实验模式的缺陷，剩余工作属于后续工程优化。
 
 ### 4.1 Holdout 状态
 
@@ -187,10 +189,11 @@ P0 独立验证集、P1 独立检索评测和 P2 Web 实验发布决定均已完
 
 ### 4.3 当前工作区状态
 
-- 分支：`feature/rag-evaluation-benchmark`
-- 相对远程：领先 4 个本地提交，尚未推送。
-- 代码与评测产物均已分阶段提交。
-- `PROJECT_HANDOFF.md` 仍是本地未跟踪文件，本次已更新，但尚未提交。
+- 分支：`main`
+- 本地 `main` 与 `origin/main` 已同步到合并提交 `9859ad7`。
+- 功能分支 `feature/rag-evaluation-benchmark` 已完整合并，目前仍保留在本地和远程，没有删除。
+- 代码、评测产物和 `PROJECT_HANDOFF.md` 均已纳入版本控制。
+- 合并后完整运行 88 个 Python 单元测试，全部通过；前端 JavaScript 语法检查通过。
 - 新代码验收服务运行在 `http://127.0.0.1:8766`；原 `8765` 进程可能仍是旧代码，不用于本次结论。
 
 ## 5. 已知问题与边界
@@ -288,18 +291,17 @@ python webapp\server.py --host 127.0.0.1 --port 8766
 
 ### P3：独立验证完成后的工程优化
 
-当前最近的短步骤是：检查并提交本交接文档，然后在用户确认后推送本地提交。
+Planner v3 阶段已经完成合并。当前最近的工程短步骤是：将手工 Web 验收固化为 direct/planned v3 自动端到端回归。
 
 后续工程优先级：
 
-1. 将本次 4 个代码/评测提交和交接文档同步到远程仓库。
-2. 将手工 Web 验收固化为 direct/planned v3 的自动端到端回归。
-3. 补充 PDFLoader 页码与来源 metadata 的官方资料。
-4. 实现知识库增量更新、文档版本、删除旧向量和缓存失效流程。
-5. 并行执行 planned retrieval 的独立子查询，并增加 embedding、候选和重排缓存。
-6. 为知识库更新建立离线回归评测和索引版本记录。
-7. 增加越权、提示注入、来源冲突和知识库外问题测试。
-8. 准备作品集架构图、演示问题、指标表和技术决策说明。
+1. 将手工 Web 验收固化为 direct/planned v3 的自动端到端回归。
+2. 补充 PDFLoader 页码与来源 metadata 的官方资料。
+3. 实现知识库增量更新、文档版本、删除旧向量和缓存失效流程。
+4. 并行执行 planned retrieval 的独立子查询，并增加 embedding、候选和重排缓存。
+5. 为知识库更新建立离线回归评测和索引版本记录。
+6. 增加越权、提示注入、来源冲突和知识库外问题测试。
+7. 准备作品集架构图、演示问题、指标表和技术决策说明。
 
 ## 8. 新任务启动方式
 
