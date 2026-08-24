@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import patch
 
 from webapp.server import (
+    build_routing_plan,
     default_llm_provider,
     default_planned_fusion_mode,
     default_retrieval_mode,
@@ -36,13 +37,31 @@ class WebDefaultsTest(unittest.TestCase):
         with patch.dict(os.environ, {"RAG_DEFAULT_RETRIEVAL_MODE": "unknown"}, clear=True):
             self.assertEqual(default_retrieval_mode(), "direct")
 
-    def test_planned_fusion_defaults_to_anchored(self) -> None:
+    def test_planned_fusion_defaults_to_conservative_v3(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
-            self.assertEqual(default_planned_fusion_mode(), "anchored")
+            self.assertEqual(default_planned_fusion_mode(), "conservative")
 
     def test_legacy_planned_fusion_can_be_selected_for_ab(self) -> None:
         with patch.dict(os.environ, {"RAG_PLANNED_FUSION_MODE": "legacy"}, clear=True):
             self.assertEqual(default_planned_fusion_mode(), "legacy")
+
+    def test_anchored_planned_fusion_can_be_selected_for_ab(self) -> None:
+        with patch.dict(os.environ, {"RAG_PLANNED_FUSION_MODE": "anchored"}, clear=True):
+            self.assertEqual(default_planned_fusion_mode(), "anchored")
+
+    def test_invalid_planned_fusion_falls_back_to_conservative(self) -> None:
+        with patch.dict(os.environ, {"RAG_PLANNED_FUSION_MODE": "unknown"}, clear=True):
+            self.assertEqual(default_planned_fusion_mode(), "conservative")
+
+    def test_conservative_fusion_uses_planner_v3_shape(self) -> None:
+        plan = build_routing_plan("检索评估时召回率和 citation 指标应该怎么组合？", "conservative")
+
+        self.assertEqual("rules_v3_conservative", plan.planner_version)
+
+    def test_anchored_fusion_keeps_legacy_planner_shape(self) -> None:
+        plan = build_routing_plan("检索评估时召回率和 citation 指标应该怎么组合？", "anchored")
+
+        self.assertNotEqual("rules_v3_conservative", plan.planner_version)
 
     def test_policy_errors_fallback_to_ollama(self) -> None:
         error = RuntimeError(

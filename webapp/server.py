@@ -30,7 +30,7 @@ from src.cross_encoder_reranking import runtime_config as reranker_runtime_confi
 from src.deepseek_client import DEFAULT_BASE_URL, DEFAULT_MODEL, chat_completion, get_deepseek_api_key  # noqa: E402
 from src.long_memory import DEFAULT_NAMESPACE, LongMemoryStore, format_long_memory_context  # noqa: E402
 from src.ollama_http import generate  # noqa: E402
-from src.query_planning import plan_query  # noqa: E402
+from src.query_planning import plan_query, plan_query_v3  # noqa: E402
 from src.retrieval import RetrievedChunk, planned_retrieve, retrieve_with_strategy  # noqa: E402
 from src.retrieval_routing import RetrievalRouteDecision, route_retrieval  # noqa: E402
 
@@ -227,8 +227,8 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
     audit_answer = bool(payload.get("audit_answer", True))
     if requested_retrieval_mode not in {"auto", "direct", "planned"}:
         raise ValueError("retrieval_mode must be auto, direct, or planned")
-    if planned_fusion_mode not in {"legacy", "anchored"}:
-        raise ValueError("planned_fusion_mode must be legacy or anchored")
+    if planned_fusion_mode not in {"legacy", "anchored", "conservative"}:
+        raise ValueError("planned_fusion_mode must be legacy, anchored, or conservative")
     if retrieval_strategy not in {"dense", "hybrid"}:
         raise ValueError("retrieval_strategy must be dense or hybrid")
 
@@ -254,7 +254,7 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
         plan = None
         retrieved = []
     else:
-        routing_plan = plan_query(effective_query)
+        routing_plan = build_routing_plan(effective_query, planned_fusion_mode)
         route_decision = route_retrieval(
             routing_plan,
             requested_mode=requested_retrieval_mode,
@@ -430,8 +430,14 @@ def default_retrieval_mode() -> str:
 
 
 def default_planned_fusion_mode() -> str:
-    configured = os.getenv("RAG_PLANNED_FUSION_MODE", "anchored").strip().casefold()
-    return configured if configured in {"legacy", "anchored"} else "anchored"
+    configured = os.getenv("RAG_PLANNED_FUSION_MODE", "conservative").strip().casefold()
+    return configured if configured in {"legacy", "anchored", "conservative"} else "conservative"
+
+
+def build_routing_plan(query: str, planned_fusion_mode: str):
+    if planned_fusion_mode == "conservative":
+        return plan_query_v3(query)
+    return plan_query(query)
 
 
 def build_memory_context(short_memory_context: str, long_memory_hits: list[Any]) -> str:
