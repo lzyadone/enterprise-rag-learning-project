@@ -6,9 +6,9 @@
 
 `C:\Users\Lenovo\Desktop\大模型官方课程-视频资料\学习产出\enterprise-rag-learning-project`
 
-当前开发分支：`main`
+当前开发分支：`feature/web-remote-api`
 
-最近已推送提交：`9859ad7 Merge planner v3 evaluation benchmark`
+最近已推送提交：`9b6c8bb Update handoff after main merge`
 
 Planner v3 阶段的主要提交已全部合并并推送到 `main`：
 
@@ -18,6 +18,7 @@ Planner v3 阶段的主要提交已全部合并并推送到 `main`：
 - `41e7689 Expose planner v3 planned mode in web`
 - `5a16a2a Update project handoff after planner v3 validation`
 - `9859ad7 Merge planner v3 evaluation benchmark`
+- `9b6c8bb Update handoff after main merge`
 
 本文档不包含任何密钥、token、环境变量值、`.env` 内容或其他凭据。
 
@@ -168,6 +169,16 @@ Planner v3 阶段的主要提交已全部合并并推送到 `main`：
 - 页面刷新后默认模式仍为 direct。
 - 具体产品/API 类复合问题会按 v3 的保守规则退化为原查询，不强制拆解；这是当前设计边界，不是运行故障。
 
+### 3.10 临时远程 API 与自动 Web 回归
+
+- Web 生成模型新增 `远程 API（临时）`，支持 Bearer Authorization 的 OpenAI Chat Completions 兼容接口。
+- 用户可临时填写 API Base URL 或完整 `/chat/completions` 地址、模型名和密钥，并单独测试连接。
+- 密钥不写入文件、浏览器存储、长期记忆、日志或响应；远程错误不返回 provider 原始正文。
+- 默认生成模型仍是 Ollama，DeepSeek 环境配置模式保持兼容。
+- 新增 managed Web E2E regression：自动启动临时服务，运行 focused/compound × direct/planned v3 共 4 项，全部通过。
+- 完整 Python 回归共 101 项通过，远程配置页面完成桌面与手机视口验收，浏览器控制台无错误。
+- 详细记录位于 `notes/50_web_remote_api_and_e2e.md`。
+
 ## 4. 当前未完成工作
 
 P0 独立验证集、P1 独立检索评测和 P2 Web 实验发布决定均已完成。Planner v3 阶段已经合并到 `main` 并同步到远程。当前没有阻塞实验模式的缺陷，剩余工作属于后续工程优化。
@@ -189,8 +200,8 @@ P0 独立验证集、P1 独立检索评测和 P2 Web 实验发布决定均已完
 
 ### 4.3 当前工作区状态
 
-- 分支：`main`
-- 本地 `main` 与 `origin/main` 已同步到合并提交 `9859ad7`。
+- 分支：`feature/web-remote-api`
+- 该分支从已同步的 `main` 创建，用于临时远程 API 与自动 Web 回归阶段。
 - 功能分支 `feature/rag-evaluation-benchmark` 已完整合并，目前仍保留在本地和远程，没有删除。
 - 代码、评测产物和 `PROJECT_HANDOFF.md` 均已纳入版本控制。
 - 合并后完整运行 88 个 Python 单元测试，全部通过；前端 JavaScript 语法检查通过。
@@ -291,11 +302,11 @@ python webapp\server.py --host 127.0.0.1 --port 8766
 
 ### P3：独立验证完成后的工程优化
 
-Planner v3 阶段已经完成合并。当前最近的工程短步骤是：将手工 Web 验收固化为 direct/planned v3 自动端到端回归。
+Planner v3 阶段已经完成合并。direct/planned v3 自动端到端回归与临时远程 API 已实现并验收，下一工程短步骤是形成独立提交并推送功能分支。
 
 后续工程优先级：
 
-1. 将手工 Web 验收固化为 direct/planned v3 的自动端到端回归。
+1. 提交并推送 `feature/web-remote-api`，经用户确认后合并到 `main`。
 2. 补充 PDFLoader 页码与来源 metadata 的官方资料。
 3. 实现知识库增量更新、文档版本、删除旧向量和缓存失效流程。
 4. 并行执行 planned retrieval 的独立子查询，并增加 embedding、候选和重排缓存。

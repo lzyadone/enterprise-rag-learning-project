@@ -228,6 +228,58 @@ select:focus {
   gap: 10px;
 }
 
+.remote-api-panel {
+  margin: 2px 0 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7f9fb;
+}
+
+.remote-api-panel[hidden] {
+  display: none;
+}
+
+.remote-api-head,
+.remote-api-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.remote-api-head {
+  margin-bottom: 12px;
+}
+
+.remote-api-head span,
+.remote-api-status {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.remote-api-panel .field:last-of-type {
+  margin-bottom: 10px;
+}
+
+.remote-api-actions {
+  justify-content: flex-start;
+  min-height: 36px;
+}
+
+.remote-api-status {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.remote-api-status.good {
+  color: var(--good);
+}
+
+.remote-api-status.bad {
+  color: var(--bad);
+}
+
 .checks {
   display: flex;
   gap: 16px;
@@ -488,5 +540,10 @@ a {
 
   .control-grid {
     grid-template-columns: 1fr;
+  }
+
+  .remote-api-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

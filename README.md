@@ -150,6 +150,22 @@ python webapp\server.py --host 127.0.0.1 --port 8765
 http://127.0.0.1:8765
 ```
 
+生成模型支持三种模式：
+
+- `Ollama（本地）`：默认模式，不需要远程凭据。
+- `DeepSeek（环境配置）`：使用本机已配置的 DeepSeek 凭据。
+- `远程 API（临时）`：在网页中临时填写 OpenAI 兼容的 API 地址、模型名和密钥。
+
+临时远程密钥只随当前请求发送到本地 Web 后端，不写入文件、长期记忆、浏览器存储、日志或 API 响应。远程地址需要 HTTPS；本机 `localhost`、`127.0.0.1` 和 `::1` 兼容服务允许 HTTP。支持填写 API Base URL（如 `https://api.example.com/v1`）或完整的 `/chat/completions` 地址。
+
+自动运行 direct/planned v3 Web 回归：
+
+```powershell
+python experiments\32_web_e2e_regression\run_web_regression.py
+```
+
+脚本会使用临时端口和临时记忆目录启动服务，完成两道问题 × 两种模式的真实 Ollama 问答，并将报告写入 `data/runtime/web_e2e_regression/`。
+
 ## 运行评测
 
 完整端到端评测：

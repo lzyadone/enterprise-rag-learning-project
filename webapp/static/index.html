@@ -30,8 +30,9 @@
             <label class="field">
               <span>生成模型</span>
               <select id="llmProvider">
-                <option value="deepseek">DeepSeek</option>
-                <option value="ollama">Ollama</option>
+                <option value="ollama">Ollama（本地）</option>
+                <option value="deepseek">DeepSeek（环境配置）</option>
+                <option value="openai_compatible">远程 API（临时）</option>
               </select>
             </label>
             <label class="field">
@@ -73,6 +74,48 @@
               <span>延迟预算 (ms)</span>
               <input id="latencyBudgetMs" type="number" min="1000" max="30000" step="1000" value="12000" />
             </label>
+          </div>
+
+          <div id="remoteApiPanel" class="remote-api-panel" hidden>
+            <div class="remote-api-head">
+              <strong>远程 API</strong>
+              <span>密钥不保存</span>
+            </div>
+            <label class="field">
+              <span>API 地址</span>
+              <input
+                id="remoteApiBaseUrl"
+                type="url"
+                inputmode="url"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="https://api.openai.com/v1"
+              />
+            </label>
+            <label class="field">
+              <span>模型名</span>
+              <input
+                id="remoteApiModel"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="gpt-4o-mini"
+              />
+            </label>
+            <label class="field">
+              <span>API 密钥</span>
+              <input
+                id="remoteApiKey"
+                type="password"
+                autocomplete="new-password"
+                spellcheck="false"
+                placeholder="粘贴密钥"
+              />
+            </label>
+            <div class="remote-api-actions">
+              <button id="testRemoteApiBtn" class="ghost" type="button">测试连接</button>
+              <span id="remoteApiStatus" class="remote-api-status" aria-live="polite"></span>
+            </div>
           </div>
 
           <div class="checks">

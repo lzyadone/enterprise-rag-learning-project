@@ -10,6 +10,11 @@ document.addEventListener("DOMContentLoaded", () => {
   el("askBtn").addEventListener("click", ask);
   el("newSessionBtn").addEventListener("click", newSession);
   el("clearMemoryBtn").addEventListener("click", clearLongMemory);
+  el("llmProvider").addEventListener("change", toggleRemoteApiPanel);
+  el("testRemoteApiBtn").addEventListener("click", testRemoteApi);
+  ["remoteApiBaseUrl", "remoteApiModel", "remoteApiKey"].forEach((id) => {
+    el(id).addEventListener("input", () => setRemoteApiStatus(""));
+  });
   loadStatus();
 });
 
@@ -29,8 +34,9 @@ async function loadStatus() {
     const res = await fetch("/api/status");
     const data = await res.json();
     const longCount = data.long_memory?.memory_count ?? 0;
-    el("statusLine").textContent = `知识库 ${data.collection} · ${data.indexed_count} 个 chunk · 长期记忆 ${longCount} 条 · DeepSeek ${data.deepseek_key ? "已配置（未验证）" : "未配置"}`;
+    el("statusLine").textContent = `知识库 ${data.collection} · ${data.indexed_count} 个 chunk · 长期记忆 ${longCount} 条 · DeepSeek ${data.deepseek_key ? "已配置（未验证）" : "未配置"} · 远程 API 可临时配置`;
     el("llmProvider").value = data.default_llm_provider || (data.deepseek_key ? "deepseek" : "ollama");
+    toggleRemoteApiPanel();
   } catch (error) {
     el("statusLine").textContent = `status error: ${error.message}`;
   }
@@ -71,6 +77,14 @@ async function ask() {
   const query = el("queryInput").value.trim();
   if (!query) return;
 
+  let remoteConfig = {};
+  try {
+    remoteConfig = readRemoteApiConfig();
+  } catch (error) {
+    showError(error.message);
+    return;
+  }
+
   setBusy(true);
   showError("");
   el("answerBox").textContent = "检索、组装上下文、生成答案中...";
@@ -90,6 +104,7 @@ async function ask() {
     use_memory: el("useMemory").checked,
     use_long_memory: el("useLongMemory").checked,
     audit_answer: el("auditAnswer").checked,
+    ...remoteConfig,
   };
 
   try {
@@ -112,6 +127,71 @@ async function ask() {
   } finally {
     setBusy(false);
   }
+}
+
+function toggleRemoteApiPanel() {
+  const isRemote = el("llmProvider").value === "openai_compatible";
+  el("remoteApiPanel").hidden = !isRemote;
+  ["remoteApiBaseUrl", "remoteApiModel", "remoteApiKey"].forEach((id) => {
+    el(id).required = isRemote;
+  });
+  if (!isRemote) setRemoteApiStatus("");
+}
+
+function readRemoteApiConfig() {
+  if (el("llmProvider").value !== "openai_compatible") return {};
+  const baseUrl = el("remoteApiBaseUrl").value.trim();
+  const model = el("remoteApiModel").value.trim();
+  const apiKey = el("remoteApiKey").value.trim();
+  if (!baseUrl) throw new Error("请填写远程 API 地址。");
+  if (!model) throw new Error("请填写远程模型名。");
+  if (!apiKey) throw new Error("请粘贴远程 API 密钥。");
+  return {
+    remote_api_base_url: baseUrl,
+    remote_api_model: model,
+    remote_api_key: apiKey,
+  };
+}
+
+async function testRemoteApi() {
+  showError("");
+  let config;
+  try {
+    config = readRemoteApiConfig();
+  } catch (error) {
+    setRemoteApiStatus(error.message, "bad");
+    return;
+  }
+
+  setRemoteApiBusy(true);
+  setRemoteApiStatus("连接中...");
+  try {
+    const res = await fetch("/api/providers/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(config),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+    setRemoteApiStatus(`连接成功 · ${data.model} · ${data.elapsed_seconds}s`, "good");
+  } catch (error) {
+    setRemoteApiStatus(error.message, "bad");
+  } finally {
+    setRemoteApiBusy(false);
+  }
+}
+
+function setRemoteApiBusy(isBusy) {
+  el("testRemoteApiBtn").disabled = isBusy;
+  el("testRemoteApiBtn").textContent = isBusy ? "连接中..." : "测试连接";
+}
+
+function setRemoteApiStatus(message, tone = "") {
+  const status = el("remoteApiStatus");
+  status.textContent = message;
+  status.className = `remote-api-status ${tone}`.trim();
 }
 
 function setBusy(isBusy) {
