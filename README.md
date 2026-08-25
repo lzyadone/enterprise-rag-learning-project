@@ -4,8 +4,8 @@
 
 ## 当前结果
 
-- 知识库文档：52 篇
-- 结构化 chunks：938 个
+- 知识库文档：54 篇
+- 结构化 chunks：942 个
 - 检索：Chroma dense retrieval + BM25 sparse retrieval + RRF
 - Embedding：Ollama `bge-m3`
 - 生成模型：DeepSeek API 或 Ollama 本地模型
@@ -13,7 +13,7 @@
 - 端到端评测：planned hybrid 10/10 通过，quality pass rate 100%
 - 检索实验：direct hybrid 双指标通过率 75%，dense 基线为 62.5%
 - 重排实验：planned hybrid 在 8/8 问题上保持双指标通过；cross-encoder 未提升总体 nDCG，暂不设为默认
-- Planner v3 开发集：direct nDCG@10 为 0.837，planned v2 为 0.737，conservative auto 为 0.853；等待新 holdout，默认继续使用 direct
+- Planner v3 开发集：direct nDCG@10 为 0.837，planned v2 为 0.737，conservative auto 为 0.853；独立 holdout 已通过无退化门槛，默认继续使用 direct
 
 最新评测摘要：
 
@@ -34,6 +34,7 @@ Demo 覆盖复合问题拆解、非固定窗口 chunking、query rewrite/query e
 ## 核心能力
 
 - 资料来源可追踪：通过 `data/source_manifests/llm_rag_sources.csv` 维护高质量来源。
+- 安全定向刷新：只更新指定来源时仍聚合完整 P0 语料，缺少任一来源即保留旧产物；固定 GitHub 源可按 Python 类或方法精确提取。
 - 正式入库流程：fetch -> markdown -> structure-aware chunking -> embedding -> Chroma index。
 - 非固定窗口切分：按 Markdown 结构、标题和段落边界切分，再用软/硬长度约束兜底。
 - Query planning：先理解问题意图，再生成子查询、分类过滤和必答方面。
@@ -131,9 +132,9 @@ python experiments\18_llm_rag_index\build_index.py --rebuild --batch-size 8
 当前构建结果：
 
 ```text
-documents: 52
-chunks: 938
-indexed_count: 938
+documents: 54
+chunks: 942
+indexed_count: 942
 too_long_chunks: 0
 tiny_chunks: 0
 ```
@@ -389,9 +390,8 @@ conservative planner v3 将平均检索 runs 从 `18.22` 降到 `1.81`，只有 
 - 给 Web 页面增加更清晰的“答案/来源/审计”展示。
 - 增加更多真实业务数据集，验证跨领域泛化。
 - 扩充 union benchmark 的 query 数量，并对模型严重分歧样本做独立人工复核。
-- 冻结 planner v3 的独立 holdout 问题、系统版本和通过门槛，再决定是否进入 Web 实验模式。
-- 对 planner v3 holdout qrels 做独立人工抽查；不能把自然开发集结果当发布证明。
-- 对 holdout v2 做少量独立人工复核，确认 LLM 盲标结论没有系统性偏差。
+- 实现知识库增量更新、来源版本记录、旧向量删除和缓存失效流程。
+- 为知识库更新建立独立离线回归和索引版本清单。
 - 并行执行 planned retrieval 中相互独立的子查询，继续降低复杂问题延迟。
 - 增加候选与重排结果缓存，降低 planned retrieval 的在线延迟。
 - 增加 GitHub Actions 或本地一键评测脚本。

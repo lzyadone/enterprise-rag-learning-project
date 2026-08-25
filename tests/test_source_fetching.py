@@ -19,6 +19,46 @@ SPEC.loader.exec_module(MODULE)
 
 
 class SourceFetchingTest(unittest.TestCase):
+    def test_pypdf_metadata_sources_are_pinned_and_ingested(self) -> None:
+        manifest = PROJECT_ROOT / "data" / "source_manifests" / "llm_rag_sources.csv"
+        sources = {source.source_id: source for source in MODULE.read_sources(manifest)}
+
+        for source_id in ("langchain_pypdf_metadata", "langchain_text_splitter_metadata"):
+            source = sources[source_id]
+            self.assertEqual("P0", source.priority)
+            self.assertEqual("yes", source.ingest_first)
+            self.assertRegex(source.url, r"/blob/[0-9a-f]{40}/")
+
+        self.assertEqual(
+            "PyPDFParser.__init__,PyPDFParser.lazy_parse",
+            sources["langchain_pypdf_metadata"].extract_symbol,
+        )
+        self.assertIn("页码", sources["langchain_pypdf_metadata"].title)
+        self.assertEqual(
+            "TextSplitter.create_documents,TextSplitter.split_documents",
+            sources["langchain_text_splitter_metadata"].extract_symbol,
+        )
+        self.assertIn("继承", sources["langchain_text_splitter_metadata"].title)
+
+    def test_extract_python_symbol_keeps_only_requested_definition(self) -> None:
+        body = '''
+class First:
+    marker = "keep"
+
+    def method(self):
+        return "nested"
+
+class Second:
+    marker = "exclude"
+'''.strip()
+
+        extracted = MODULE.extract_python_symbol(body, "First.method,First")
+
+        self.assertIn('marker = "keep"', extracted)
+        self.assertIn('return "nested"', extracted)
+        self.assertNotIn("class Second", extracted)
+        self.assertNotIn("exclude", extracted)
+
     def test_targeted_fetch_keeps_all_eligible_document_sources(self) -> None:
         sources = [make_source("one"), make_source("two"), make_source("later", priority="P1")]
         args = make_args(source_id=["two"])

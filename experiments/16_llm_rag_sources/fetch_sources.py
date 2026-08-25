@@ -14,6 +14,7 @@ manually copying pages into the project.
 from __future__ import annotations
 
 import argparse
+import ast
 import csv
 import hashlib
 import html
@@ -55,6 +56,7 @@ class Source:
     ingest_first: str
     why: str
     notes: str
+    extract_symbol: str = ""
 
 
 class BasicHTMLToMarkdown(HTMLParser):
@@ -151,11 +153,16 @@ def parse_args() -> argparse.Namespace:
 def read_sources(manifest: Path) -> list[Source]:
     with manifest.open("r", encoding="utf-8-sig", newline="") as f:
         rows = list(csv.DictReader(f))
-    required = set(Source.__dataclass_fields__.keys())
+    required = set(Source.__dataclass_fields__.keys()) - {"extract_symbol"}
     missing = required - set(rows[0].keys() if rows else [])
     if missing:
         raise ValueError(f"Manifest missing columns: {sorted(missing)}")
-    return [Source(**{field: row[field].strip() for field in required}) for row in rows]
+    sources = []
+    for row in rows:
+        values = {field: row[field].strip() for field in required}
+        values["extract_symbol"] = (row.get("extract_symbol") or "").strip()
+        sources.append(Source(**values))
+    return sources
 
 
 def select_eligible_sources(sources: Iterable[Source], args: argparse.Namespace) -> list[Source]:
@@ -321,6 +328,8 @@ def convert_to_markdown(
 
 
 def wrap_markdown(source: Source, body: str) -> str:
+    if source.extract_symbol:
+        body = extract_python_symbol(body, source.extract_symbol)
     body = clean_document_body(source, body)
     metadata = {
         "source_id": source.source_id,
@@ -337,6 +346,48 @@ def wrap_markdown(source: Source, body: str) -> str:
         header.append(f'{key}: "{safe}"')
     header.extend(["---", "", f"# {source.title}", "", f"Source: {source.url}", ""])
     return "\n".join(header) + body + "\n"
+
+
+def extract_python_symbol(body: str, symbol: str) -> str:
+    """Return selected Python definitions from a pinned source file."""
+    try:
+        module = ast.parse(body)
+    except SyntaxError as exc:
+        raise ValueError(f"Cannot parse Python source while extracting {symbol}: {exc}") from exc
+
+    segments = []
+    for selector in (item.strip() for item in symbol.split(",")):
+        if not selector:
+            continue
+        nodes = module.body
+        node = None
+        for part in selector.split("."):
+            node = next(
+                (
+                    candidate
+                    for candidate in nodes
+                    if isinstance(candidate, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+                    and candidate.name == part
+                ),
+                None,
+            )
+            if node is None:
+                raise ValueError(f"Python symbol not found: {selector}")
+            nodes = getattr(node, "body", [])
+
+        assert node is not None
+        start_line = min(
+            [node.lineno, *(decorator.lineno for decorator in node.decorator_list)]
+        )
+        end_line = node.end_lineno
+        if end_line is None:
+            raise ValueError(f"Python parser did not report an end line for {selector}")
+        definition = "\n".join(body.splitlines()[start_line - 1 : end_line]).strip()
+        segments.append(f"# Official symbol: {selector}\n{definition}")
+
+    if not segments:
+        raise ValueError("At least one Python symbol is required")
+    return "\n\n".join(segments)
 
 
 def clean_document_body(source: Source, body: str) -> str:
@@ -469,6 +520,7 @@ def write_metadata(source: Source, source_dir: Path, raw_path: Path | None, stat
         "ingest_first": source.ingest_first,
         "why": source.why,
         "notes": source.notes,
+        "extract_symbol": source.extract_symbol,
         "raw_file": str(raw_path) if raw_path else None,
         "status": status,
         "updated_at": datetime.now(timezone.utc).isoformat(),
