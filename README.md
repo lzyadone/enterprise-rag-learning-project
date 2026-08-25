@@ -36,6 +36,7 @@ Demo 覆盖复合问题拆解、非固定窗口 chunking、query rewrite/query e
 - 资料来源可追踪：通过 `data/source_manifests/llm_rag_sources.csv` 维护高质量来源。
 - 安全定向刷新：只更新指定来源时仍聚合完整 P0 语料，缺少任一来源即保留旧产物；固定 GitHub 源可按 Python 类或方法精确提取。
 - 正式入库流程：fetch -> markdown -> structure-aware chunking -> embedding -> Chroma index。
+- 版本化增量索引：按文档/chunk 指纹识别变化，只重新切分变化来源并复用未变化 embedding；候选验收后原子启用，可一步回滚。
 - 非固定窗口切分：按 Markdown 结构、标题和段落边界切分，再用软/硬长度约束兜底。
 - Query planning：先理解问题意图，再生成子查询、分类过滤和必答方面。
 - Conservative planner v3：具体问题安全退化为原查询，只对至少两个明确方面执行有上限、保留原实体的扩展。
@@ -53,7 +54,8 @@ Demo 覆盖复合问题拆解、非固定窗口 chunking、query rewrite/query e
 flowchart LR
     A["Curated sources"] --> B["Fetch and convert to Markdown"]
     B --> C["Structure-aware chunking"]
-    C --> D["bge-m3 embeddings"]
+    C --> V["Delta plan and immutable index version"]
+    V --> D["Reuse or create bge-m3 embeddings"]
     D --> E["Chroma dense index"]
     C --> S["BM25 sparse index"]
     Q["User question"] --> P["Query planning"]
@@ -79,6 +81,7 @@ experiments/18_llm_rag_index/     Chroma 索引构建与搜索
 experiments/22_rag_system_eval/   Web API 端到端评测
 experiments/23_hybrid_retrieval_eval/  Dense/BM25/RRF 对比实验
 experiments/24_cross_encoder_rerank_eval/  固定候选重排对比实验
+experiments/33_incremental_index/  版本化增量构建、验收、启用和回滚
 data/source_manifests/       高质量资料来源清单
 docs/                        调研记录
 notes/                       学习过程与阶段复盘
@@ -138,6 +141,29 @@ indexed_count: 942
 too_long_chunks: 0
 tiny_chunks: 0
 ```
+
+首次把现有索引纳入版本管理：
+
+```powershell
+python experiments\33_incremental_index\manage_index.py bootstrap --version-id baseline-YYYYMMDD
+```
+
+后续更新先查看变化，再构建和验证候选；`build` 不会自动启用：
+
+```powershell
+python experiments\33_incremental_index\manage_index.py plan
+python experiments\33_incremental_index\manage_index.py build --version-id index-YYYYMMDD
+python experiments\33_incremental_index\manage_index.py validate --manifest data\indexes\llm_rag_versions\index-YYYYMMDD\manifest.json
+python experiments\33_incremental_index\manage_index.py activate --manifest data\indexes\llm_rag_versions\index-YYYYMMDD\manifest.json
+```
+
+Web 会在请求间自动加载新版本，不需要重启。出现回归时执行：
+
+```powershell
+python experiments\33_incremental_index\manage_index.py rollback
+```
+
+每个版本保存独立 manifest、chunks 和 Chroma；来源删除后，候选索引不会保留对应旧向量。详细设计与验收见 `notes/52_versioned_incremental_index.md`。
 
 ## 启动 Web 工作台
 
@@ -390,8 +416,7 @@ conservative planner v3 将平均检索 runs 从 `18.22` 降到 `1.81`，只有 
 - 给 Web 页面增加更清晰的“答案/来源/审计”展示。
 - 增加更多真实业务数据集，验证跨领域泛化。
 - 扩充 union benchmark 的 query 数量，并对模型严重分歧样本做独立人工复核。
-- 实现知识库增量更新、来源版本记录、旧向量删除和缓存失效流程。
-- 为知识库更新建立独立离线回归和索引版本清单。
+- 把知识库更新的固定检索、系统测试和版本清单检查收敛为单一离线发布门禁。
 - 并行执行 planned retrieval 中相互独立的子查询，继续降低复杂问题延迟。
 - 增加候选与重排结果缓存，降低 planned retrieval 的在线延迟。
 - 增加 GitHub Actions 或本地一键评测脚本。

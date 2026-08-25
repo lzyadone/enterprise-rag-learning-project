@@ -7,6 +7,7 @@ import json
 import mimetypes
 import os
 import sys
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -24,11 +25,13 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.answer_audit import DEFAULT_AUDIT_MODEL, audit_answer_with_deepseek, combine_audits, deterministic_audit  # noqa: E402
 from src.answer_repair import repair_answer_with_deepseek  # noqa: E402
+from src.bm25_retrieval import clear_bm25_cache  # noqa: E402
 from src.context_assembly import assemble_context, build_answer_prompt  # noqa: E402
 from src.coverage_audit import audit_coverage_with_deepseek, deterministic_coverage_audit  # noqa: E402
 from src.cross_encoder_reranking import runtime_config as reranker_runtime_config  # noqa: E402
 from src.deepseek_client import DEFAULT_BASE_URL, DEFAULT_MODEL, chat_completion, get_deepseek_api_key  # noqa: E402
 from src.long_memory import DEFAULT_NAMESPACE, LongMemoryStore, format_long_memory_context  # noqa: E402
+from src.index_versioning import load_active_index, resolve_stored_path  # noqa: E402
 from src.ollama_http import generate  # noqa: E402
 from src.openai_compatible_client import (  # noqa: E402
     OpenAICompatibleAPIError,
@@ -41,6 +44,8 @@ from src.retrieval_routing import RetrievalRouteDecision, route_retrieval  # noq
 
 STATIC_DIR = PROJECT_ROOT / "webapp" / "static"
 DEFAULT_DB_DIR = PROJECT_ROOT / "data" / "indexes" / "llm_rag_chroma"
+DEFAULT_CHUNKS_PATH = PROJECT_ROOT / "data" / "processed" / "llm_rag_docs" / "chunks.jsonl"
+DEFAULT_ACTIVE_INDEX = PROJECT_ROOT / "data" / "runtime" / "active_index.json"
 DEFAULT_COLLECTION = "llm_rag_docs"
 DEFAULT_MEMORY_SQLITE = PROJECT_ROOT / "data" / "runtime" / "long_memory.sqlite3"
 DEFAULT_MEMORY_CHROMA_DIR = PROJECT_ROOT / "data" / "runtime" / "long_memory_chroma"
@@ -100,14 +105,102 @@ class ConversationMemory:
         }
 
 
+@dataclass(frozen=True)
+class IndexRuntime:
+    client: Any
+    collection: Any
+    db_dir: Path
+    chunks_path: Path
+    version_id: str
+    manifest_path: Path | None
+
+
 class AppState:
-    def __init__(self, db_dir: Path, collection_name: str, memory_sqlite: Path, memory_chroma_dir: Path) -> None:
-        self.db_dir = db_dir
+    def __init__(
+        self,
+        db_dir: Path,
+        collection_name: str,
+        memory_sqlite: Path,
+        memory_chroma_dir: Path,
+        active_index_path: Path | None = None,
+    ) -> None:
+        self.default_db_dir = db_dir.resolve()
         self.collection_name = collection_name
-        self.client = chromadb.PersistentClient(path=str(db_dir))
-        self.collection = self.client.get_collection(name=collection_name)
+        self.active_index_path = active_index_path.resolve() if active_index_path else None
+        self._index_lock = threading.RLock()
+        self._active_pointer_signature = self._pointer_signature()
+        self._index_runtime = self._load_index_runtime()
         self.long_memory = LongMemoryStore(memory_sqlite, memory_chroma_dir)
         self.memories: dict[str, ConversationMemory] = {}
+
+    @property
+    def client(self):
+        return self._index_runtime.client
+
+    @property
+    def collection(self):
+        return self._index_runtime.collection
+
+    @property
+    def db_dir(self) -> Path:
+        return self._index_runtime.db_dir
+
+    def _pointer_signature(self) -> tuple[int, int] | None:
+        if self.active_index_path is None or not self.active_index_path.exists():
+            return None
+        stat = self.active_index_path.stat()
+        return stat.st_mtime_ns, stat.st_size
+
+    def _load_index_runtime(self) -> IndexRuntime:
+        if self.active_index_path is not None and self.active_index_path.exists():
+            _, manifest_path, manifest = load_active_index(
+                self.active_index_path,
+                PROJECT_ROOT,
+            )
+            db_dir = resolve_stored_path(str(manifest["db_dir"]), PROJECT_ROOT)
+            chunks_path = resolve_stored_path(str(manifest["chunks_path"]), PROJECT_ROOT)
+            client = chromadb.PersistentClient(path=str(db_dir))
+            collection = client.get_collection(name=str(manifest["collection"]))
+            if collection.count() != int(manifest["chunk_count"]):
+                raise ValueError("Active index count does not match its manifest")
+            return IndexRuntime(
+                client=client,
+                collection=collection,
+                db_dir=db_dir,
+                chunks_path=chunks_path,
+                version_id=str(manifest["version_id"]),
+                manifest_path=manifest_path,
+            )
+
+        client = chromadb.PersistentClient(path=str(self.default_db_dir))
+        collection = client.get_collection(name=self.collection_name)
+        return IndexRuntime(
+            client=client,
+            collection=collection,
+            db_dir=self.default_db_dir,
+            chunks_path=DEFAULT_CHUNKS_PATH,
+            version_id="legacy",
+            manifest_path=None,
+        )
+
+    def refresh_index_if_changed(self) -> bool:
+        signature = self._pointer_signature()
+        with self._index_lock:
+            if signature == self._active_pointer_signature:
+                return False
+            if signature is None:
+                self._active_pointer_signature = None
+                return False
+            runtime = self._load_index_runtime()
+            self._index_runtime = runtime
+            self._active_pointer_signature = signature
+            clear_bm25_cache()
+            return True
+
+    def index_runtime(self) -> IndexRuntime:
+        self.refresh_index_if_changed()
+        with self._index_lock:
+            return self._index_runtime
 
     def memory(self, session_id: str | None) -> ConversationMemory:
         sid = session_id or str(uuid.uuid4())
@@ -125,6 +218,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--db-dir", type=Path, default=DEFAULT_DB_DIR)
     parser.add_argument("--collection", default=DEFAULT_COLLECTION)
+    active_group = parser.add_mutually_exclusive_group()
+    active_group.add_argument("--active-index", type=Path, default=None)
+    active_group.add_argument("--no-active-index", action="store_true")
     parser.add_argument("--memory-sqlite", type=Path, default=DEFAULT_MEMORY_SQLITE)
     parser.add_argument("--memory-chroma-dir", type=Path, default=DEFAULT_MEMORY_CHROMA_DIR)
     return parser.parse_args()
@@ -136,11 +232,13 @@ class RAGRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         path = unquote(urlparse(self.path).path)
         if path == "/api/status":
+            index_runtime = STATE.index_runtime()
             self.write_json(
                 {
                     "ok": True,
                     "collection": STATE.collection_name,
-                    "indexed_count": STATE.collection.count(),
+                    "indexed_count": index_runtime.collection.count(),
+                    "index_version": index_runtime.version_id,
                     "deepseek_key": bool(get_deepseek_api_key()),
                     "default_llm_provider": default_llm_provider(),
                     "temporary_remote_api": True,
@@ -223,6 +321,8 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
     if not query:
         raise ValueError("query is required")
 
+    index_runtime = STATE.index_runtime()
+
     memory = STATE.memory(str(payload.get("session_id") or "") or None)
     use_memory = bool(payload.get("use_memory", True))
     use_long_memory = bool(payload.get("use_long_memory", use_memory))
@@ -280,7 +380,7 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
         if selected_retrieval_mode == "direct":
             plan = None
             retrieved = retrieve_with_strategy(
-                STATE.collection,
+                index_runtime.collection,
                 effective_query,
                 embedding_model,
                 ollama_host,
@@ -288,10 +388,11 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
                 candidate_k=candidate_k,
                 rerank_mode=rerank_mode,
                 retrieval_strategy=retrieval_strategy,
+                chunks_path=index_runtime.chunks_path,
             )
         else:
             plan, retrieved = planned_retrieve(
-                STATE.collection,
+                index_runtime.collection,
                 effective_query,
                 embedding_model,
                 ollama_host,
@@ -299,6 +400,7 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
                 candidate_k=candidate_k,
                 rerank_mode=rerank_mode,
                 retrieval_strategy=retrieval_strategy,
+                chunks_path=index_runtime.chunks_path,
                 query_plan=routing_plan,
                 fusion_mode=planned_fusion_mode,
             )
@@ -426,6 +528,7 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
             "use_long_memory": use_long_memory,
             "memory_namespace": memory_namespace,
             "memory_answer_mode": memory_answer_mode,
+            "index_version": index_runtime.version_id,
         },
         "routing": route_decision.as_dict() if route_decision else None,
         "plan": plan.as_dict() if plan else None,
@@ -831,10 +934,27 @@ def combine_coverage_audits(
 def main() -> None:
     global STATE
     args = parse_args()
-    STATE = AppState(args.db_dir, args.collection, args.memory_sqlite, args.memory_chroma_dir)
+    active_index_path = args.active_index
+    if (
+        active_index_path is None
+        and not args.no_active_index
+        and args.db_dir.resolve() == DEFAULT_DB_DIR.resolve()
+    ):
+        active_index_path = DEFAULT_ACTIVE_INDEX
+    STATE = AppState(
+        args.db_dir,
+        args.collection,
+        args.memory_sqlite,
+        args.memory_chroma_dir,
+        active_index_path=active_index_path,
+    )
+    index_runtime = STATE.index_runtime()
     server = ThreadingHTTPServer((args.host, args.port), RAGRequestHandler)
     print(f"RAG workbench running at http://{args.host}:{args.port}")
-    print(f"collection={args.collection} indexed_count={STATE.collection.count()}")
+    print(
+        f"collection={args.collection} indexed_count={index_runtime.collection.count()} "
+        f"index_version={index_runtime.version_id}"
+    )
     print(f"deepseek_key={'set' if get_deepseek_api_key() else 'missing'}")
     print(f"long_memory_count={STATE.long_memory.count(DEFAULT_NAMESPACE)}")
     try:
