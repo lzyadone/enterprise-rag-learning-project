@@ -1,14 +1,14 @@
 # Enterprise RAG Learning Project Handoff
 
-更新日期：2026-08-24
+更新日期：2026-08-25
 
 项目目录：
 
 `C:\Users\Lenovo\Desktop\大模型官方课程-视频资料\学习产出\enterprise-rag-learning-project`
 
-当前开发分支：`feature/web-remote-api`
+当前开发分支：`main`
 
-最近已推送提交：`9b6c8bb Update handoff after main merge`
+最近已合并并推送的功能提交：`b6b8624 Merge temporary remote API support`
 
 Planner v3 阶段的主要提交已全部合并并推送到 `main`：
 
@@ -19,6 +19,8 @@ Planner v3 阶段的主要提交已全部合并并推送到 `main`：
 - `5a16a2a Update project handoff after planner v3 validation`
 - `9859ad7 Merge planner v3 evaluation benchmark`
 - `9b6c8bb Update handoff after main merge`
+- `bd8c327 Add temporary remote API support`
+- `b6b8624 Merge temporary remote API support`
 
 本文档不包含任何密钥、token、环境变量值、`.env` 内容或其他凭据。
 
@@ -133,7 +135,7 @@ Planner v3 阶段的主要提交已全部合并并推送到 `main`：
 - 浏览器不接收云端原始错误正文。
 - `rank-bm25` 作为可选依赖；缺失时使用内置 `SimpleBM25Okapi`。
 - 为默认 provider、生成回退、最终 provider 路径和 BM25 fallback 增加测试。
-- 完整测试最近一次结果：`81 passed`。
+- 该阶段完成时测试结果为 `81 passed`；当前完整 Python 回归已扩展到 101 项并全部通过。
 - Web 后端真实烟测成功：返回非空答案和检索来源。
 
 ### 3.7 独立 holdout 与发布决定
@@ -175,13 +177,14 @@ Planner v3 阶段的主要提交已全部合并并推送到 `main`：
 - 用户可临时填写 API Base URL 或完整 `/chat/completions` 地址、模型名和密钥，并单独测试连接。
 - 密钥不写入文件、浏览器存储、长期记忆、日志或响应；远程错误不返回 provider 原始正文。
 - 默认生成模型仍是 Ollama，DeepSeek 环境配置模式保持兼容。
-- 新增 managed Web E2E regression：自动启动临时服务，运行 focused/compound × direct/planned v3 共 4 项，全部通过。
+- 新增 managed Web E2E regression：自动启动临时服务，运行 focused/compound × direct/planned v3 共 4 项；功能分支首次完整验收 4/4 通过。
 - 完整 Python 回归共 101 项通过，远程配置页面完成桌面与手机视口验收，浏览器控制台无错误。
+- 合并后完整复验为 3/4；唯一失败是本地 Ollama 偶发未输出来源编号，失败项的 direct/planned 定向复验随后 2/2 通过。检索来源、类别、模式、规划器形态和耗时检查均正常，因此记录为生成格式波动，不判定为合并回归。
 - 详细记录位于 `notes/50_web_remote_api_and_e2e.md`。
 
 ## 4. 当前未完成工作
 
-P0 独立验证集、P1 独立检索评测和 P2 Web 实验发布决定均已完成。Planner v3 阶段已经合并到 `main` 并同步到远程。当前没有阻塞实验模式的缺陷，剩余工作属于后续工程优化。
+P0 独立验证集、P1 独立检索评测和 P2 Web 实验发布决定均已完成。Planner v3、临时远程 API 和自动 Web 回归均已合并到 `main` 并同步到远程。当前没有阻塞实验模式的缺陷，剩余工作属于后续工程优化。
 
 ### 4.1 Holdout 状态
 
@@ -196,16 +199,17 @@ P0 独立验证集、P1 独立检索评测和 P2 Web 实验发布决定均已完
 - qrels 主要由 LLM 盲标，并经过 Codex 辅助抽查；它不是生产级人工金标。
 - conservative planner 只扩展已定义、证据明确的 RAG 问题模式。具体 API、产品事实或不确定复合问题会安全退化为原查询。
 - Web 的覆盖审计依赖 planner 识别出明确 aspects；安全退化的问题会显示“未运行”。
+- 本地 Ollama 的答案生成具有随机性，偶尔会漏写来源编号；自动 Web 回归会将其标记为 `citation_present` 失败，需结合定向复验区分格式波动与功能回归。
 - 默认 Python 环境缺少 pytest，因此本轮使用 unittest 完成针对性验证；没有重新执行完整 pytest 套件。
 
 ### 4.3 当前工作区状态
 
-- 分支：`feature/web-remote-api`
-- 该分支从已同步的 `main` 创建，用于临时远程 API 与自动 Web 回归阶段。
+- 分支：`main`
+- `feature/web-remote-api` 已通过 `b6b8624` 合并到 `main` 并推送；功能分支仍保留在本地和远程，没有删除。
 - 功能分支 `feature/rag-evaluation-benchmark` 已完整合并，目前仍保留在本地和远程，没有删除。
 - 代码、评测产物和 `PROJECT_HANDOFF.md` 均已纳入版本控制。
-- 合并后完整运行 88 个 Python 单元测试，全部通过；前端 JavaScript 语法检查通过。
-- 新代码验收服务运行在 `http://127.0.0.1:8766`；原 `8765` 进程可能仍是旧代码，不用于本次结论。
+- 合并后完整运行 101 个 Python 单元测试，全部通过；前端 JavaScript 语法检查通过。
+- 合并提交推送后，本地 `main` 与 `origin/main` 均指向 `b6b8624`，工作区干净。
 
 ## 5. 已知问题与边界
 
@@ -216,6 +220,7 @@ P0 独立验证集、P1 独立检索评测和 P2 Web 实验发布决定均已完
 5. LLM qrels 不是人工真值；当前 12 条辅助抽查足以支持学习项目实验结论，不足以替代生产发布前的真人标注。
 6. 独立检索延迟已达标，但页面端到端生成耗时约为 8.6-30.3 秒，受本地模型冷启动和答案生成影响较大。
 7. 当前长 Codex 对话曾在较长工作流中被平台中断。新对话应使用本文件恢复上下文，并采用短步骤、持续 checkpoint 和分阶段提交。
+8. 临时远程 API 密钥只存在于当前页面内存和单次请求中；刷新页面后需重新填写。远程 API 必须使用 HTTPS，本机回环地址除外。
 
 ## 6. 验证命令
 
@@ -302,17 +307,16 @@ python webapp\server.py --host 127.0.0.1 --port 8766
 
 ### P3：独立验证完成后的工程优化
 
-Planner v3 阶段已经完成合并。direct/planned v3 自动端到端回归与临时远程 API 已实现并验收，下一工程短步骤是形成独立提交并推送功能分支。
+Planner v3、direct/planned v3 自动端到端回归与临时远程 API 均已实现、验收并合并到 `main`。当前短步骤是单独提交本次交接文档更新；完成后进入后续工程优化。
 
 后续工程优先级：
 
-1. 提交并推送 `feature/web-remote-api`，经用户确认后合并到 `main`。
-2. 补充 PDFLoader 页码与来源 metadata 的官方资料。
-3. 实现知识库增量更新、文档版本、删除旧向量和缓存失效流程。
-4. 并行执行 planned retrieval 的独立子查询，并增加 embedding、候选和重排缓存。
-5. 为知识库更新建立离线回归评测和索引版本记录。
-6. 增加越权、提示注入、来源冲突和知识库外问题测试。
-7. 准备作品集架构图、演示问题、指标表和技术决策说明。
+1. 补充 PDFLoader 页码与来源 metadata 的官方资料，并确认旧评测中 2 个问题的预期行为。
+2. 实现知识库增量更新、文档版本、删除旧向量和缓存失效流程。
+3. 并行执行 planned retrieval 的独立子查询，并增加 embedding、候选和重排缓存。
+4. 为知识库更新建立离线回归评测和索引版本记录。
+5. 增加越权、提示注入、来源冲突和知识库外问题测试。
+6. 准备作品集架构图、演示问题、指标表和技术决策说明。
 
 ## 8. 新任务启动方式
 
