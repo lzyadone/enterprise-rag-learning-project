@@ -93,6 +93,11 @@ def get_bm25_index(path: Path) -> BM25ChunkIndex:
     return _cached_bm25_index(str(resolved), stat.st_mtime_ns, stat.st_size)
 
 
+def clear_bm25_cache() -> None:
+    """Release cached corpus indexes after an active index version switch."""
+    _cached_bm25_index.cache_clear()
+
+
 @lru_cache(maxsize=4)
 def _cached_bm25_index(path: str, _mtime_ns: int, _size: int) -> BM25ChunkIndex:
     return BM25ChunkIndex.from_jsonl(Path(path))

@@ -6,11 +6,11 @@
 
 `C:\Users\Lenovo\Desktop\大模型官方课程-视频资料\学习产出\enterprise-rag-learning-project`
 
-当前开发分支：`main`
+当前开发分支：`feature/versioned-incremental-index`
 
-本次功能合并提交：`e8a0583 Merge safe source refresh and PyPDF metadata`
+本次功能提交：`a870fb5 Add versioned incremental index lifecycle`
 
-本次合并包含：
+上一阶段合并包含：
 
 - `7f841d9 Protect targeted source refreshes`
 - `379fe71 Add pinned PyPDF metadata sources`
@@ -200,9 +200,20 @@ Planner v3 阶段的主要提交已全部合并并推送到 `main`：
 - 候选索引验证通过后已晋升为默认 `llm_rag_chroma`；旧 938 条索引本地保留为 `llm_rag_chroma_pre_pypdf_938`，两者都不提交 Git。
 - 未修改旧自然开发问题、qrels、候选池、冻结 holdout、source anchors 或历史评测结果。详细记录位于 `notes/51_pypdfloader_metadata_source_refresh.md`。
 
+### 3.12 版本化增量索引
+
+- 新增来源级 SHA-256 差异计划，识别 added、changed、deleted 和 unchanged 文档。
+- unchanged 文档直接复用上一版本 chunks；同 embedding 模型下按 chunk ID/text hash 或 source/text hash 复用旧向量，只为缺失向量调用 embedding。
+- 每个版本保存不可变 manifest、chunks 和 Chroma；候选只包含当前期望 chunks，删除来源不会残留旧向量。
+- 构建与启用分离；manifest、内容哈希、来源状态、Chroma 文本、metadata、ID 和数量必须一致才能启用。
+- 激活指针通过原子文件替换切换版本并记录上一版本，可一步回滚。
+- Web 在请求间检测激活指针，无需重启即可热加载新版本；切换时清空 BM25 语料缓存，单次请求固定使用同一版本快照。
+- 真实 54/942/942 索引已封装为 `baseline-20260825-942`，942 个 embedding 全部复用；候选启用和回滚均在同一 Web 进程中通过。
+- 两个 PyPDFLoader 固定问题的候选检索排名与上一阶段完全一致。详细记录位于 `notes/52_versioned_incremental_index.md`。
+
 ## 4. 当前未完成工作
 
-P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定和 PyPDFLoader metadata 官方来源补齐均已完成。Planner v3、临时远程 API、自动 Web 回归、安全来源刷新与 PyPDF 官方证据均已合并到 `main`。当前没有功能阻塞，下一项是通用的增量索引与来源版本管理。
+P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定、PyPDFLoader metadata 官方来源补齐和版本化增量索引均已完成。当前没有功能阻塞。下一项是把知识库更新所需的结构校验、固定检索回归和完整测试收敛成单一离线发布门禁，减少人工串联步骤。
 
 ### 4.1 Holdout 状态
 
@@ -218,17 +229,18 @@ P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定和 PyPDFL
 - conservative planner 只扩展已定义、证据明确的 RAG 问题模式。具体 API、产品事实或不确定复合问题会安全退化为原查询。
 - Web 的覆盖审计依赖 planner 识别出明确 aspects；安全退化的问题会显示“未运行”。
 - 本地 Ollama 的答案生成具有随机性，偶尔会漏写来源编号；自动 Web 回归会将其标记为 `citation_present` 失败，需结合定向复验区分格式波动与功能回归。
-- 当前使用项目既有 unittest 入口完成 106 项完整 Python 回归；项目尚未建立独立 CI 门禁。
+- 当前使用项目既有 unittest 入口完成 111 项完整 Python 回归；项目尚未建立独立 CI 门禁。
 
 ### 4.3 当前工作区状态
 
-- 分支：`main`
+- 分支：`feature/versioned-incremental-index`
+- 本阶段功能提交：`a870fb5 Add versioned incremental index lifecycle`。
 - `feature/safe-source-refresh` 已通过 `e8a0583` 合并到 `main`；功能分支仍保留在本地和远程，没有删除。
 - `feature/web-remote-api` 已通过 `b6b8624` 合并到 `main` 并推送；功能分支仍保留在本地和远程，没有删除。
 - 功能分支 `feature/rag-evaluation-benchmark` 已完整合并，目前仍保留在本地和远程，没有删除。
-- 默认本地索引为 942 条，旧 938 条索引有独立备份；生成语料和索引均由 `.gitignore` 排除。
-- 合并后完整运行 106 个 Python 单元测试，全部通过；`eval/` 下无改动。
-- `main` 包含合并提交 `e8a0583`；本文件继续按惯例单独提交。
+- 默认激活版本为 `baseline-20260825-942`，包含 54 documents / 942 chunks / 942 Chroma rows；旧 938 条索引和 legacy 942 条索引均保留，生成语料、版本目录和激活指针由 `.gitignore` 排除。
+- 完整运行 111 个 Python 单元测试，全部通过；前端 JavaScript 语法检查通过；`eval/` 下无改动。
+- 功能分支从 `main` 的 `69d98f5` 创建，尚未合并；本文件继续按惯例单独提交。
 
 ## 5. 已知问题与边界
 
@@ -272,6 +284,14 @@ Planner v3 与 Web 针对性回归：
 
 ```powershell
 python -m unittest tests.test_web_defaults tests.test_query_planning_v3 tests.test_retrieval_fusion tests.test_retrieval_routing tests.test_auto_routing_evaluation
+```
+
+增量索引生命周期测试：
+
+```powershell
+python -m unittest tests.test_index_versioning
+python experiments\33_incremental_index\manage_index.py status
+python experiments\33_incremental_index\manage_index.py plan
 ```
 
 JavaScript 语法检查：
@@ -326,16 +346,16 @@ python webapp\server.py --host 127.0.0.1 --port 8766
 
 ### P3：独立验证完成后的工程优化
 
-Planner v3、direct/planned v3 自动端到端回归、临时远程 API、安全来源刷新和 PyPDFLoader metadata 官方证据均已实现、验收并合并到 `main`，默认本地索引已更新。
+Planner v3、direct/planned v3 自动端到端回归、临时远程 API、安全来源刷新和 PyPDFLoader metadata 官方证据均已实现、验收并合并到 `main`，默认本地索引已更新。版本化增量索引已在功能分支完成并通过真实数据验收，等待合并。
 
-本轮已完成：补充 PDFLoader 页码与来源 metadata 官方资料，并确认旧评测中 2 个问题的预期行为。
+本轮已完成：实现来源差异、增量切分、embedding 复用、删除清理、不可变版本清单、候选验收、原子启用、Web 热加载、缓存失效和一步回滚。
 
 后续工程优先级：
 
-1. 实现知识库增量更新、来源/文档版本、旧向量删除和缓存失效流程，并替代当前人工目录晋升。
-2. 为知识库更新建立离线回归评测和可追溯索引版本清单。
-3. 并行执行 planned retrieval 的独立子查询，并增加 embedding、候选和重排缓存。
-4. 增加越权、提示注入、来源冲突和知识库外问题测试。
+1. 把知识库更新的结构校验、固定检索、完整测试和版本报告收敛为单一离线发布门禁。
+2. 并行执行 planned retrieval 的独立子查询，并增加候选和重排缓存。
+3. 增加越权、提示注入、来源冲突和知识库外问题测试。
+4. 增加 GitHub Actions 或本地一键评测入口。
 5. 准备作品集架构图、演示问题、指标表和技术决策说明。
 
 ## 8. 新任务启动方式
