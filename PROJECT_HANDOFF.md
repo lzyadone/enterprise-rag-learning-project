@@ -6,9 +6,14 @@
 
 `C:\Users\Lenovo\Desktop\大模型官方课程-视频资料\学习产出\enterprise-rag-learning-project`
 
-当前开发分支：`main`
+当前开发分支：`feature/safe-source-refresh`
 
-最近已合并并推送的功能提交：`b6b8624 Merge temporary remote API support`
+`main` 最近已推送提交：`c44b57e Update handoff after remote API merge`
+
+当前功能分支的两个功能提交：
+
+- `7f841d9 Protect targeted source refreshes`
+- `379fe71 Add pinned PyPDF metadata sources`
 
 Planner v3 阶段的主要提交已全部合并并推送到 `main`：
 
@@ -21,6 +26,7 @@ Planner v3 阶段的主要提交已全部合并并推送到 `main`：
 - `9b6c8bb Update handoff after main merge`
 - `bd8c327 Add temporary remote API support`
 - `b6b8624 Merge temporary remote API support`
+- `c44b57e Update handoff after remote API merge`
 
 本文档不包含任何密钥、token、环境变量值、`.env` 内容或其他凭据。
 
@@ -57,13 +63,15 @@ Planner v3 阶段的主要提交已全部合并并推送到 `main`：
 | `tests/` | 单元测试和行为回归测试 |
 | `notes/` | 每个工程阶段的学习记录和实验结论 |
 
-当前 RAG 知识库包含 52 份已处理文档、938 个结构化 chunk，主要来源是官方文档、论文和高质量开源项目资料。
+当前 RAG 知识库包含 54 份已处理文档、942 个结构化 chunk，主要来源是官方文档、论文和高质量开源项目资料。
 
 ## 3. 已完成能力
 
 ### 3.1 数据与索引
 
 - 建立来源 manifest，记录标题、类别、优先级、来源类型和 URL。
+- manifest 支持可选 `extract_symbol`，可从固定提交的 Python 源码中只提取指定类或方法，避免同文件相邻实现污染检索证据。
+- 定向来源刷新只控制下载对象，聚合仍要求全部符合条件的 P0 来源完整存在；缺少来源时保留旧 `documents.jsonl`，完整时通过临时文件原子替换。
 - 跑通 fetch -> Markdown/文本 -> 结构化 chunk -> embedding -> Chroma。
 - chunking 以标题、段落和文档结构为主，长度只是软限制和异常兜底，不是固定窗口硬切。
 - 使用 `bge-m3` 生成本地向量。
@@ -135,7 +143,7 @@ Planner v3 阶段的主要提交已全部合并并推送到 `main`：
 - 浏览器不接收云端原始错误正文。
 - `rank-bm25` 作为可选依赖；缺失时使用内置 `SimpleBM25Okapi`。
 - 为默认 provider、生成回退、最终 provider 路径和 BM25 fallback 增加测试。
-- 该阶段完成时测试结果为 `81 passed`；当前完整 Python 回归已扩展到 101 项并全部通过。
+- 该阶段完成时测试结果为 `81 passed`；当前完整 Python 回归已扩展到 106 项并全部通过。
 - Web 后端真实烟测成功：返回非空答案和检索来源。
 
 ### 3.7 独立 holdout 与发布决定
@@ -182,9 +190,18 @@ Planner v3 阶段的主要提交已全部合并并推送到 `main`：
 - 合并后完整复验为 3/4；唯一失败是本地 Ollama 偶发未输出来源编号，失败项的 direct/planned 定向复验随后 2/2 通过。检索来源、类别、模式、规划器形态和耗时检查均正常，因此记录为生成格式波动，不判定为合并回归。
 - 详细记录位于 `notes/50_web_remote_api_and_e2e.md`。
 
+### 3.11 PyPDFLoader Metadata 官方来源与安全刷新
+
+- 新增固定到具体 Git 提交的 `PyPDFParser` 和 `TextSplitter` 官方源码，分别提取构造/解析方法与 metadata 传递方法。
+- 知识库由 52 documents / 938 chunks 升级为 54 documents / 942 chunks，切分检查无超长或过短片段。
+- 默认 Web 检索参数下，`natural_dev_007` 的 PyPDF 官方证据排名第 1；`natural_dev_009` 的两条 PyPDF 证据排名第 1、2，两条 TextSplitter 证据排名第 3、5。
+- 真实本地 Web API 答案正确区分默认 page 模式、single 模式和 chunk metadata 继承，规则与 LLM 审计均通过，faithfulness/citation 均为 5/5。
+- 候选索引验证通过后已晋升为默认 `llm_rag_chroma`；旧 938 条索引本地保留为 `llm_rag_chroma_pre_pypdf_938`，两者都不提交 Git。
+- 未修改旧自然开发问题、qrels、候选池、冻结 holdout、source anchors 或历史评测结果。详细记录位于 `notes/51_pypdfloader_metadata_source_refresh.md`。
+
 ## 4. 当前未完成工作
 
-P0 独立验证集、P1 独立检索评测和 P2 Web 实验发布决定均已完成。Planner v3、临时远程 API 和自动 Web 回归均已合并到 `main` 并同步到远程。当前没有阻塞实验模式的缺陷，剩余工作属于后续工程优化。
+P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定和 PyPDFLoader metadata 官方来源补齐均已完成。Planner v3、临时远程 API 和自动 Web 回归已合并到 `main`；安全来源刷新与 PyPDF 官方证据位于当前功能分支。当前没有功能阻塞，下一项是通用的增量索引与来源版本管理。
 
 ### 4.1 Holdout 状态
 
@@ -200,21 +217,22 @@ P0 独立验证集、P1 独立检索评测和 P2 Web 实验发布决定均已完
 - conservative planner 只扩展已定义、证据明确的 RAG 问题模式。具体 API、产品事实或不确定复合问题会安全退化为原查询。
 - Web 的覆盖审计依赖 planner 识别出明确 aspects；安全退化的问题会显示“未运行”。
 - 本地 Ollama 的答案生成具有随机性，偶尔会漏写来源编号；自动 Web 回归会将其标记为 `citation_present` 失败，需结合定向复验区分格式波动与功能回归。
-- 默认 Python 环境缺少 pytest，因此本轮使用 unittest 完成针对性验证；没有重新执行完整 pytest 套件。
+- 当前使用项目既有 unittest 入口完成 106 项完整 Python 回归；项目尚未建立独立 CI 门禁。
 
 ### 4.3 当前工作区状态
 
-- 分支：`main`
+- 分支：`feature/safe-source-refresh`
+- 当前分支的功能提交为 `7f841d9` 和 `379fe71`，尚未合并到 `main`；本文件按惯例单独提交。
 - `feature/web-remote-api` 已通过 `b6b8624` 合并到 `main` 并推送；功能分支仍保留在本地和远程，没有删除。
 - 功能分支 `feature/rag-evaluation-benchmark` 已完整合并，目前仍保留在本地和远程，没有删除。
-- 代码、评测产物和 `PROJECT_HANDOFF.md` 均已纳入版本控制。
-- 合并后完整运行 101 个 Python 单元测试，全部通过；前端 JavaScript 语法检查通过。
-- 合并提交推送后，本地 `main` 与 `origin/main` 均指向 `b6b8624`，工作区干净。
+- 默认本地索引为 942 条，旧 938 条索引有独立备份；生成语料和索引均由 `.gitignore` 排除。
+- 当前分支完整运行 106 个 Python 单元测试，全部通过；`eval/` 下无改动。
+- 本地 `main` 与 `origin/main` 均保持在 `c44b57e`；功能分支完成交接提交后应推送远程，再由用户决定是否合并。
 
 ## 5. 已知问题与边界
 
 1. Planner v3 已通过独立 holdout 门槛，但目前只允许作为 Web 实验模式，不能替换默认 direct。
-2. 旧评测中有 2 个 PDFLoader 页码 metadata 问题缺少足够候选证据。
+2. 旧评测中 2 个 PDFLoader 页码 metadata 问题的知识覆盖缺口已补齐；历史候选池和分数保持原样，若重新评测必须建立新版本。
 3. holdout 已冻结并完成评测。后续若修改题目、资料、planner 或检索参数，必须建立新版本，不能覆盖 v3 结果。
 4. 远程模型和本地小模型的答案质量不同，检索评测与答案生成评测必须分开。
 5. LLM qrels 不是人工真值；当前 12 条辅助抽查足以支持学习项目实验结论，不足以替代生产发布前的真人标注。
@@ -307,16 +325,17 @@ python webapp\server.py --host 127.0.0.1 --port 8766
 
 ### P3：独立验证完成后的工程优化
 
-Planner v3、direct/planned v3 自动端到端回归与临时远程 API 均已实现、验收并合并到 `main`。当前短步骤是单独提交本次交接文档更新；完成后进入后续工程优化。
+Planner v3、direct/planned v3 自动端到端回归与临时远程 API 均已实现并合并到 `main`。安全来源刷新和 PyPDFLoader metadata 官方证据已在当前功能分支实现、验收并更新默认本地索引。
+
+本轮已完成：补充 PDFLoader 页码与来源 metadata 官方资料，并确认旧评测中 2 个问题的预期行为。
 
 后续工程优先级：
 
-1. 补充 PDFLoader 页码与来源 metadata 的官方资料，并确认旧评测中 2 个问题的预期行为。
-2. 实现知识库增量更新、文档版本、删除旧向量和缓存失效流程。
+1. 实现知识库增量更新、来源/文档版本、旧向量删除和缓存失效流程，并替代当前人工目录晋升。
+2. 为知识库更新建立离线回归评测和可追溯索引版本清单。
 3. 并行执行 planned retrieval 的独立子查询，并增加 embedding、候选和重排缓存。
-4. 为知识库更新建立离线回归评测和索引版本记录。
-5. 增加越权、提示注入、来源冲突和知识库外问题测试。
-6. 准备作品集架构图、演示问题、指标表和技术决策说明。
+4. 增加越权、提示注入、来源冲突和知识库外问题测试。
+5. 准备作品集架构图、演示问题、指标表和技术决策说明。
 
 ## 8. 新任务启动方式
 
