@@ -30,6 +30,10 @@ from src.cross_encoder_reranking import runtime_config as reranker_runtime_confi
 from src.deepseek_client import DEFAULT_BASE_URL, DEFAULT_MODEL, chat_completion, get_deepseek_api_key  # noqa: E402
 from src.long_memory import DEFAULT_NAMESPACE, LongMemoryStore, format_long_memory_context  # noqa: E402
 from src.ollama_http import generate  # noqa: E402
+from src.openai_compatible_client import (  # noqa: E402
+    OpenAICompatibleAPIError,
+    chat_completion as openai_compatible_chat_completion,
+)
 from src.query_planning import plan_query, plan_query_v3  # noqa: E402
 from src.retrieval import RetrievedChunk, planned_retrieve, retrieve_with_strategy  # noqa: E402
 from src.retrieval_routing import RetrievalRouteDecision, route_retrieval  # noqa: E402
@@ -139,6 +143,7 @@ class RAGRequestHandler(BaseHTTPRequestHandler):
                     "indexed_count": STATE.collection.count(),
                     "deepseek_key": bool(get_deepseek_api_key()),
                     "default_llm_provider": default_llm_provider(),
+                    "temporary_remote_api": True,
                     "default_retrieval_mode": default_retrieval_mode(),
                     "planned_fusion_mode": default_planned_fusion_mode(),
                     "reranker": reranker_runtime_config(),
@@ -163,6 +168,15 @@ class RAGRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         path = urlparse(self.path).path
+        if path == "/api/providers/test":
+            try:
+                self.write_json(handle_provider_test(self.read_json()))
+            except ValueError as exc:
+                self.write_json({"ok": False, "error": str(exc)}, status=400)
+            except OpenAICompatibleAPIError as exc:
+                self.write_json({"ok": False, "error": str(exc)}, status=502)
+            return
+
         if path == "/api/memory/clear":
             try:
                 payload = self.read_json()
@@ -213,7 +227,7 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
     use_memory = bool(payload.get("use_memory", True))
     use_long_memory = bool(payload.get("use_long_memory", use_memory))
     memory_namespace = str(payload.get("memory_namespace") or DEFAULT_NAMESPACE)
-    llm_provider = str(payload.get("llm_provider") or default_llm_provider())
+    llm_provider = str(payload.get("llm_provider") or default_llm_provider()).strip().casefold()
     requested_retrieval_mode = str(payload.get("retrieval_mode") or default_retrieval_mode())
     planned_fusion_mode = str(payload.get("planned_fusion_mode") or default_planned_fusion_mode())
     retrieval_strategy = str(payload.get("retrieval_strategy") or "hybrid")
@@ -225,6 +239,8 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
     latency_budget_ms = int(payload.get("latency_budget_ms") or 12000)
     max_context_chars = int(payload.get("max_context_chars") or 9000)
     audit_answer = bool(payload.get("audit_answer", True))
+    if llm_provider not in {"ollama", "deepseek", "openai_compatible"}:
+        raise ValueError("llm_provider must be ollama, deepseek, or openai_compatible")
     if requested_retrieval_mode not in {"auto", "direct", "planned"}:
         raise ValueError("retrieval_mode must be auto, direct, or planned")
     if planned_fusion_mode not in {"legacy", "anchored", "conservative"}:
@@ -302,15 +318,32 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
         ollama_host=ollama_host,
         deepseek_model=str(payload.get("deepseek_model") or DEFAULT_MODEL),
         deepseek_base_url=str(payload.get("deepseek_base_url") or DEFAULT_BASE_URL),
+        remote_api_model=str(payload.get("remote_api_model") or ""),
+        remote_api_base_url=str(payload.get("remote_api_base_url") or ""),
+        remote_api_key=str(payload.get("remote_api_key") or ""),
     )
+    payload.pop("remote_api_key", None)
 
     audit = None
     if audit_answer:
         if memory_answer_mode:
             audit = build_memory_answer_audit(answer, has_memory=bool(memory_context.strip()))
         else:
-            audit = run_full_audit(query, assembled.evidence_context, answer, retrieved, plan, payload)
-        if not memory_answer_mode and should_repair_answer(audit) and get_deepseek_api_key():
+            audit = run_full_audit(
+                query,
+                assembled.evidence_context,
+                answer,
+                retrieved,
+                plan,
+                payload,
+                allow_deepseek=llm_provider != "openai_compatible",
+            )
+        if (
+            not memory_answer_mode
+            and llm_provider != "openai_compatible"
+            and should_repair_answer(audit)
+            and get_deepseek_api_key()
+        ):
             try:
                 repair_model = str(payload.get("deepseek_repair_model") or DEFAULT_AUDIT_MODEL)
                 repaired_answer = repair_answer_with_deepseek(
@@ -424,6 +457,28 @@ def default_llm_provider() -> str:
     return "ollama"
 
 
+def handle_provider_test(payload: dict[str, Any]) -> dict[str, Any]:
+    model = str(payload.get("remote_api_model") or "").strip()
+    base_url = str(payload.get("remote_api_base_url") or "").strip()
+    api_key = str(payload.get("remote_api_key") or "").strip()
+    started = time.time()
+    openai_compatible_chat_completion(
+        [{"role": "user", "content": "Reply with OK."}],
+        model=model,
+        base_url=base_url,
+        api_key=api_key,
+        temperature=0,
+        max_tokens=16,
+        timeout=45,
+    )
+    return {
+        "ok": True,
+        "provider": "openai_compatible",
+        "model": model,
+        "elapsed_seconds": round(time.time() - started, 2),
+    }
+
+
 def default_retrieval_mode() -> str:
     configured = os.getenv("RAG_DEFAULT_RETRIEVAL_MODE", "direct").strip().casefold()
     return configured if configured in {"auto", "direct", "planned"} else "direct"
@@ -513,6 +568,9 @@ def generate_with_provider(
     ollama_host: str,
     deepseek_model: str,
     deepseek_base_url: str,
+    remote_api_model: str = "",
+    remote_api_base_url: str = "",
+    remote_api_key: str = "",
 ) -> tuple[str, dict[str, Any]]:
     if llm_provider == "ollama":
         return generate(prompt, ollama_model, ollama_host, num_ctx=8192, num_predict=1200), {
@@ -585,6 +643,28 @@ def generate_with_provider(
                 "fallback_reason": generation_fallback_reason(exc),
                 "cloud_error_type": type(exc).__name__,
             }
+    if llm_provider == "openai_compatible":
+        answer = openai_compatible_chat_completion(
+            [
+                {
+                    "role": "system",
+                    "content": "你是严谨的大模型工程知识库助手。必须只根据检索资料回答。",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            model=remote_api_model,
+            base_url=remote_api_base_url,
+            api_key=remote_api_key,
+            temperature=0.1,
+            max_tokens=1600,
+        )
+        return answer, {
+            "requested_provider": "openai_compatible",
+            "provider": "openai_compatible",
+            "model": remote_api_model.strip(),
+            "provider_path": [f"remote:{remote_api_model.strip()}"],
+            "fallback_used": False,
+        }
     raise ValueError(f"Unsupported llm_provider: {llm_provider}")
 
 
@@ -633,12 +713,13 @@ def run_full_audit(
     retrieved: list[RetrievedChunk],
     plan: Any,
     payload: dict[str, Any],
+    allow_deepseek: bool = True,
 ) -> dict[str, Any]:
     audit_error = None
     rule_audit = deterministic_audit(answer, source_count=len(retrieved))
     llm_audit = None
     try:
-        if get_deepseek_api_key():
+        if allow_deepseek and get_deepseek_api_key():
             llm_audit = audit_answer_with_deepseek(
                 query,
                 evidence_context,
@@ -658,7 +739,7 @@ def run_full_audit(
         rule_coverage = deterministic_coverage_audit(answer, plan.aspects)
         llm_coverage = None
         try:
-            if get_deepseek_api_key():
+            if allow_deepseek and get_deepseek_api_key():
                 llm_coverage = audit_coverage_with_deepseek(
                     query,
                     evidence_context,

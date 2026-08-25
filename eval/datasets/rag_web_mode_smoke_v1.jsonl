@@ -1,0 +1,2 @@
+{"id":"focused_chunking","question":"文档切分为什么不能只用固定窗口？","expected_category":"chunking"}
+{"id":"compound_badcase","question":"RAG 系统出现 badcase 时，如何结合检索指标、答案忠实性和引用质量定位问题？","expected_categories":["evaluation","RAG challenges","RAG overview"],"min_category_hits":1}
