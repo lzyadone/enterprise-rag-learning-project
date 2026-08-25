@@ -6,14 +6,15 @@
 
 `C:\Users\Lenovo\Desktop\大模型官方课程-视频资料\学习产出\enterprise-rag-learning-project`
 
-当前开发分支：`feature/safe-source-refresh`
+当前开发分支：`main`
 
-`main` 最近已推送提交：`c44b57e Update handoff after remote API merge`
+本次功能合并提交：`e8a0583 Merge safe source refresh and PyPDF metadata`
 
-当前功能分支的两个功能提交：
+本次合并包含：
 
 - `7f841d9 Protect targeted source refreshes`
 - `379fe71 Add pinned PyPDF metadata sources`
+- `844277a Update handoff after source refresh`
 
 Planner v3 阶段的主要提交已全部合并并推送到 `main`：
 
@@ -201,7 +202,7 @@ Planner v3 阶段的主要提交已全部合并并推送到 `main`：
 
 ## 4. 当前未完成工作
 
-P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定和 PyPDFLoader metadata 官方来源补齐均已完成。Planner v3、临时远程 API 和自动 Web 回归已合并到 `main`；安全来源刷新与 PyPDF 官方证据位于当前功能分支。当前没有功能阻塞，下一项是通用的增量索引与来源版本管理。
+P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定和 PyPDFLoader metadata 官方来源补齐均已完成。Planner v3、临时远程 API、自动 Web 回归、安全来源刷新与 PyPDF 官方证据均已合并到 `main`。当前没有功能阻塞，下一项是通用的增量索引与来源版本管理。
 
 ### 4.1 Holdout 状态
 
@@ -221,13 +222,13 @@ P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定和 PyPDFL
 
 ### 4.3 当前工作区状态
 
-- 分支：`feature/safe-source-refresh`
-- 当前分支的功能提交为 `7f841d9` 和 `379fe71`，尚未合并到 `main`；本文件按惯例单独提交。
+- 分支：`main`
+- `feature/safe-source-refresh` 已通过 `e8a0583` 合并到 `main`；功能分支仍保留在本地和远程，没有删除。
 - `feature/web-remote-api` 已通过 `b6b8624` 合并到 `main` 并推送；功能分支仍保留在本地和远程，没有删除。
 - 功能分支 `feature/rag-evaluation-benchmark` 已完整合并，目前仍保留在本地和远程，没有删除。
 - 默认本地索引为 942 条，旧 938 条索引有独立备份；生成语料和索引均由 `.gitignore` 排除。
-- 当前分支完整运行 106 个 Python 单元测试，全部通过；`eval/` 下无改动。
-- 本地 `main` 与 `origin/main` 均保持在 `c44b57e`；功能分支完成交接提交后应推送远程，再由用户决定是否合并。
+- 合并后完整运行 106 个 Python 单元测试，全部通过；`eval/` 下无改动。
+- `main` 包含合并提交 `e8a0583`；本文件继续按惯例单独提交。
 
 ## 5. 已知问题与边界
 
@@ -325,7 +326,7 @@ python webapp\server.py --host 127.0.0.1 --port 8766
 
 ### P3：独立验证完成后的工程优化
 
-Planner v3、direct/planned v3 自动端到端回归与临时远程 API 均已实现并合并到 `main`。安全来源刷新和 PyPDFLoader metadata 官方证据已在当前功能分支实现、验收并更新默认本地索引。
+Planner v3、direct/planned v3 自动端到端回归、临时远程 API、安全来源刷新和 PyPDFLoader metadata 官方证据均已实现、验收并合并到 `main`，默认本地索引已更新。
 
 本轮已完成：补充 PDFLoader 页码与来源 metadata 官方资料，并确认旧评测中 2 个问题的预期行为。
 
