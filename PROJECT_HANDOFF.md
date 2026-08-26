@@ -6,11 +6,11 @@
 
 `C:\Users\Lenovo\Desktop\大模型官方课程-视频资料\学习产出\enterprise-rag-learning-project`
 
-当前开发分支：`feature/index-release-gate`
+当前开发分支：`feature/planned-retrieval-parallel-cache`
 
-本次功能提交：`049445a Add index release quality gate`
+本次功能提交：`14b2b2e Parallelize and cache planned retrieval`
 
-增量索引已通过 `49023ea Merge versioned incremental index lifecycle` 合并并推送到 `main`。
+索引发布门禁已通过 `e8b961b Merge index release quality gate` 合并并推送到 `main`。
 
 上一阶段合并包含：
 
@@ -223,9 +223,20 @@ Planner v3 阶段的主要提交已全部合并并推送到 `main`：
 - 对 `validation-copy-20260825` 的真实 dry run 和激活演练均通过：structure passed、retrieval 8/10、required failures 0、tests 116/116。
 - 激活演练后已成功 rollback，当前恢复 `baseline-20260825-942`。详细记录位于 `notes/53_index_release_gate.md`。
 
+### 3.14 Planned Retrieval 并行与缓存
+
+- embedding 预计算后，planned retrieval 使用最多 4 workers 并行执行独立 Chroma/BM25 runs；单 run 自动保持串行。
+- 并行结果按原请求顺序收集，加权 RRF、plan boost 和覆盖选择逻辑不变；cross-encoder 仍只集中执行一次。
+- 新增线程安全有界 LRU：candidate 512 项、rerank 128 项，读写均深拷贝，避免可变候选污染缓存。
+- candidate key 包含索引命名空间、模型/host、策略、查询、category 和召回窗口；rerank key 还包含候选及重排器配置指纹。
+- Web active index 热切换会同时清空 BM25、candidate 和 rerank 缓存；自定义 legacy DB 使用实际路径隔离。
+- `reuse_query_embeddings=False` 会同时绕过新缓存，旧严格 A/B 语义保持不变。
+- 两个 7-run 复合问题各重复 3 次：串行中位 `0.0668s`，并行冷缓存 `0.0549s`（`1.22x`），并行热缓存 `0.0053s`（`12.67x`），Top-7 顺序 `6/6` 完全一致。
+- 最终索引发布门禁通过，完整测试 `122/122`；真实 Web direct/planned v3 回归 `4/4` 通过。详细记录位于 `notes/54_planned_retrieval_parallel_and_cache.md`。
+
 ## 4. 当前未完成工作
 
-P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定、PyPDFLoader metadata 官方来源、版本化增量索引和索引离线发布门禁均已完成。当前没有功能阻塞。下一项是并行执行 planned retrieval 的独立检索请求，并评估候选与重排缓存对延迟和结果一致性的影响。
+P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定、PyPDFLoader metadata 官方来源、版本化增量索引、索引离线发布门禁和 planned retrieval 并行/缓存均已完成。当前没有功能阻塞。下一项是增加越权、提示注入、来源冲突和知识库外问题的安全回归，并明确拒答与冲突处理门槛。
 
 ### 4.1 Holdout 状态
 
@@ -241,19 +252,21 @@ P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定、PyPDFLo
 - conservative planner 只扩展已定义、证据明确的 RAG 问题模式。具体 API、产品事实或不确定复合问题会安全退化为原查询。
 - Web 的覆盖审计依赖 planner 识别出明确 aspects；安全退化的问题会显示“未运行”。
 - 本地 Ollama 的答案生成具有随机性，偶尔会漏写来源编号；自动 Web 回归会将其标记为 `citation_present` 失败，需结合定向复验区分格式波动与功能回归。
-- 当前使用项目既有 unittest 入口完成 116 项完整 Python 回归；项目尚未建立独立 CI 门禁。
+- 当前使用项目既有 unittest 入口完成 122 项完整 Python 回归；项目尚未建立独立 CI 门禁。
+- candidate/rerank cache 是进程内缓存，不跨进程持久化；热缓存 `12.67x` 只代表预热 embedding 后的重复检索阶段，不代表页面端到端提速。
 
 ### 4.3 当前工作区状态
 
-- 分支：`feature/index-release-gate`
-- 本阶段功能提交：`049445a Add index release quality gate`。
+- 分支：`feature/planned-retrieval-parallel-cache`
+- 本阶段功能提交：`14b2b2e Parallelize and cache planned retrieval`。
 - `feature/safe-source-refresh` 已通过 `e8a0583` 合并到 `main`；功能分支仍保留在本地和远程，没有删除。
 - `feature/web-remote-api` 已通过 `b6b8624` 合并到 `main` 并推送；功能分支仍保留在本地和远程，没有删除。
 - 功能分支 `feature/rag-evaluation-benchmark` 已完整合并，目前仍保留在本地和远程，没有删除。
 - 默认激活版本为 `baseline-20260825-942`，包含 54 documents / 942 chunks / 942 Chroma rows；旧 938 条索引和 legacy 942 条索引均保留，生成语料、版本目录和激活指针由 `.gitignore` 排除。
-- 完整运行 116 个 Python 单元测试，全部通过；前端 JavaScript 语法检查通过。
+- 完整运行 122 个 Python 单元测试，全部通过；索引发布门禁和前端 JavaScript 语法检查通过。
+- managed Web E2E regression 为 4/4：focused/compound × direct/planned v3 全部通过。
 - `eval/` 仅新增冻结门禁规格 `eval/benchmarks/rag_index_release_gate_v1/gate.json`，未修改旧数据集、qrels 或历史结果。
-- 增量索引已通过 `49023ea` 合并到 `main`；当前门禁功能分支从该提交创建，尚未合并；本文件继续按惯例单独提交。
+- 索引发布门禁已通过 `e8b961b` 合并到 `main`；当前性能功能分支从该提交创建，尚未合并；本文件继续按惯例单独提交。
 
 ## 5. 已知问题与边界
 
@@ -314,6 +327,13 @@ python -m unittest tests.test_index_release_gate
 python experiments\34_index_release_gate\run_gate.py --manifest data\indexes\llm_rag_versions\validation-copy-20260825\manifest.json
 ```
 
+Planned retrieval 并行与缓存：
+
+```powershell
+python -m unittest tests.test_planned_retrieval_execution
+python experiments\35_planned_retrieval_parallel_cache\benchmark.py
+```
+
 JavaScript 语法检查：
 
 ```powershell
@@ -366,16 +386,15 @@ python webapp\server.py --host 127.0.0.1 --port 8766
 
 ### P3：独立验证完成后的工程优化
 
-Planner v3、direct/planned v3 自动端到端回归、临时远程 API、安全来源刷新、PyPDFLoader metadata 官方证据和版本化增量索引均已实现、验收并合并到 `main`。索引离线发布门禁已在功能分支完成并通过真实数据验收，等待合并。
+Planner v3、direct/planned v3 自动端到端回归、临时远程 API、安全来源刷新、PyPDFLoader metadata 官方证据、版本化增量索引和索引离线发布门禁均已实现、验收并合并到 `main`。Planned retrieval 并行与缓存已在功能分支完成并通过真实数据验收，等待合并。
 
-本轮已完成：将候选结构校验、10 条冻结检索回归、完整测试、可追溯报告和受控激活收敛为单一离线发布门禁。
+本轮已完成：有上限的并行 planned runs、版本感知 candidate/rerank LRU、索引切换失效、诊断绕过和串并行一致性 A/B。
 
 后续工程优先级：
 
-1. 并行执行 planned retrieval 的独立子查询，并评估候选和重排缓存。
-2. 增加越权、提示注入、来源冲突和知识库外问题测试。
-3. 增加 GitHub Actions 或本地一键评测入口。
-4. 准备作品集架构图、演示问题、指标表和技术决策说明。
+1. 增加越权、提示注入、来源冲突和知识库外问题测试，并冻结安全门槛。
+2. 增加 GitHub Actions 或本地一键评测入口。
+3. 准备作品集架构图、演示问题、指标表和技术决策说明。
 
 ## 8. 新任务启动方式
 
