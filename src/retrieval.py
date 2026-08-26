@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -10,10 +11,16 @@ from typing import Any
 import chromadb
 
 from src.bm25_retrieval import get_bm25_index
-from src.cross_encoder_reranking import cross_encoder_rerank
+from src.cross_encoder_reranking import cross_encoder_rerank, runtime_config as reranker_runtime_config
 from src.ollama_http import embed_query, unload_embedding_model
 from src.query_planning import QueryPlan, plan_query, plan_query_v3
 from src.reranking import lexical_rerank
+from src.retrieval_cache import (
+    cache_candidates,
+    cache_rerank,
+    get_cached_candidates,
+    get_cached_rerank,
+)
 
 
 ASPECT_EVIDENCE_TERMS: dict[str, list[str]] = {
@@ -128,6 +135,7 @@ PLANNED_FILTERED_EXPANSION_WEIGHT = 0.5
 V3_ANCHOR_WEIGHT = 3.0
 V3_GLOBAL_EXPANSION_WEIGHT = 0.75
 V3_FILTERED_EXPANSION_WEIGHT = 0.25
+DEFAULT_PLANNED_MAX_WORKERS = 4
 
 
 @dataclass
@@ -152,6 +160,14 @@ class PlannedRunSpec:
     category: str | None
     aspect: str | None
     group: str
+
+
+@dataclass(frozen=True)
+class PlannedRunRequest:
+    spec: PlannedRunSpec
+    top_k: int
+    candidate_k: int
+    weight: float = 1.0
 
 
 def direct_retrieve(
@@ -258,6 +274,11 @@ def planned_retrieve(
     reuse_query_embeddings: bool = True,
     query_plan: QueryPlan | None = None,
     fusion_mode: str = "legacy",
+    parallel_runs: bool = True,
+    max_workers: int = DEFAULT_PLANNED_MAX_WORKERS,
+    use_candidate_cache: bool = True,
+    use_rerank_cache: bool = True,
+    cache_namespace: str | None = None,
 ) -> tuple[QueryPlan, list[RetrievedChunk]]:
     if fusion_mode in {"anchored", "conservative"}:
         return anchored_planned_retrieve(
@@ -275,6 +296,11 @@ def planned_retrieve(
             reuse_query_embeddings=reuse_query_embeddings,
             query_plan=query_plan,
             planning_mode="conservative" if fusion_mode == "conservative" else "legacy",
+            parallel_runs=parallel_runs,
+            max_workers=max_workers,
+            use_candidate_cache=use_candidate_cache,
+            use_rerank_cache=use_rerank_cache,
+            cache_namespace=cache_namespace,
         )
     if fusion_mode != "legacy":
         raise ValueError("fusion_mode must be legacy, anchored, or conservative")
@@ -290,13 +316,47 @@ def planned_retrieve(
             top_k = adaptive_top_k
         candidate_k = max(candidate_k, top_k * 2)
 
-    retrieval_queries = []
-    retrieval_queries.extend(
-        aspect.search_query or aspect.question
-        for aspect in plan.aspects
-    )
-    retrieval_queries.extend(plan.sub_queries)
-    unique_queries = list(dict.fromkeys(retrieval_queries))
+    requests: list[PlannedRunRequest] = []
+    for aspect in plan.aspects:
+        aspect_query = aspect.search_query or aspect.question
+        requests.append(
+            PlannedRunRequest(
+                PlannedRunSpec(aspect_query, None, aspect.name, "global_expansion"),
+                candidate_k,
+                candidate_k,
+            )
+        )
+        for category in aspect.categories[:8]:
+            requests.append(
+                PlannedRunRequest(
+                    PlannedRunSpec(
+                        aspect_query,
+                        category,
+                        aspect.name,
+                        "filtered_expansion",
+                    ),
+                    max(3, candidate_k // 2),
+                    max(3, candidate_k // 2),
+                )
+            )
+    for sub_query in plan.sub_queries:
+        requests.append(
+            PlannedRunRequest(
+                PlannedRunSpec(sub_query, None, None, "global_expansion"),
+                candidate_k,
+                candidate_k,
+            )
+        )
+        for category in plan.category_filters:
+            requests.append(
+                PlannedRunRequest(
+                    PlannedRunSpec(sub_query, category, None, "filtered_expansion"),
+                    candidate_k,
+                    candidate_k,
+                )
+            )
+
+    unique_queries = list(dict.fromkeys(request.spec.query for request in requests))
     embedding_by_query = (
         {
             query_text: embed_query(query_text, embedding_model, ollama_host)
@@ -306,79 +366,21 @@ def planned_retrieve(
         else {}
     )
 
-    retrieval_runs: list[list[RetrievedChunk]] = []
-
-    for aspect in plan.aspects:
-        aspect_query = aspect.search_query or aspect.question
-        aspect_runs: list[list[RetrievedChunk]] = []
-        aspect_runs.append(
-            retrieve_with_strategy(
-                collection,
-                aspect_query,
-                embedding_model,
-                ollama_host,
-                top_k=candidate_k,
-                category=None,
-                rerank_mode="none",
-                retrieval_strategy=retrieval_strategy,
-                chunks_path=chunks_path,
-                query_embedding=embedding_by_query.get(aspect_query),
-                use_embedding_cache=reuse_query_embeddings,
-            )
-        )
-        for category in aspect.categories[:8]:
-            aspect_runs.append(
-                retrieve_with_strategy(
-                    collection,
-                    aspect_query,
-                    embedding_model,
-                    ollama_host,
-                    top_k=max(3, candidate_k // 2),
-                    category=category,
-                    rerank_mode="none",
-                    retrieval_strategy=retrieval_strategy,
-                    chunks_path=chunks_path,
-                    query_embedding=embedding_by_query.get(aspect_query),
-                    use_embedding_cache=reuse_query_embeddings,
-                )
-            )
-        for run in aspect_runs:
-            for item in run:
-                item.aspect = aspect.name
-        retrieval_runs.extend(aspect_runs)
-
-    for sub_query in plan.sub_queries:
-        retrieval_runs.append(
-            retrieve_with_strategy(
-                collection,
-                sub_query,
-                embedding_model,
-                ollama_host,
-                top_k=candidate_k,
-                category=None,
-                rerank_mode="none",
-                retrieval_strategy=retrieval_strategy,
-                chunks_path=chunks_path,
-                query_embedding=embedding_by_query.get(sub_query),
-                use_embedding_cache=reuse_query_embeddings,
-            )
-        )
-        for category in plan.category_filters:
-            retrieval_runs.append(
-                retrieve_with_strategy(
-                    collection,
-                    sub_query,
-                    embedding_model,
-                    ollama_host,
-                    top_k=candidate_k,
-                    category=category,
-                    rerank_mode="none",
-                    retrieval_strategy=retrieval_strategy,
-                    chunks_path=chunks_path,
-                    query_embedding=embedding_by_query.get(sub_query),
-                    use_embedding_cache=reuse_query_embeddings,
-                )
-            )
+    namespace = planned_cache_namespace(collection, chunks_path, cache_namespace)
+    retrieval_runs = execute_planned_run_requests(
+        requests,
+        collection=collection,
+        embedding_model=embedding_model,
+        ollama_host=ollama_host,
+        retrieval_strategy=retrieval_strategy,
+        chunks_path=chunks_path,
+        embedding_by_query=embedding_by_query,
+        reuse_query_embeddings=reuse_query_embeddings,
+        parallel_runs=parallel_runs,
+        max_workers=max_workers,
+        use_candidate_cache=use_candidate_cache and reuse_query_embeddings,
+        cache_namespace=namespace,
+    )
 
     fused = reciprocal_rank_fusion(retrieval_runs)
     rerank_pool = fused
@@ -389,8 +391,15 @@ def planned_retrieve(
             plan.warnings.append(
                 f"cross-encoder pool limited from {len(fused)} to {rerank_pool_size} candidates"
             )
-    prepare_model_residency(rerank_mode, embedding_model, ollama_host)
-    ranked = rerank(query, rerank_pool, len(rerank_pool), rerank_mode)
+    ranked = rerank_planned_candidates(
+        query,
+        rerank_pool,
+        rerank_mode,
+        embedding_model,
+        ollama_host,
+        namespace,
+        use_rerank_cache and reuse_query_embeddings,
+    )
     ranked = apply_plan_boosts(ranked, plan)
     return plan, select_with_plan_coverage(ranked, top_k, plan)
 
@@ -410,6 +419,11 @@ def anchored_planned_retrieve(
     reuse_query_embeddings: bool = True,
     query_plan: QueryPlan | None = None,
     planning_mode: str = "legacy",
+    parallel_runs: bool = True,
+    max_workers: int = DEFAULT_PLANNED_MAX_WORKERS,
+    use_candidate_cache: bool = True,
+    use_rerank_cache: bool = True,
+    cache_namespace: str | None = None,
 ) -> tuple[QueryPlan, list[RetrievedChunk]]:
     """Retrieve with an original-query anchor and bounded expansion influence."""
     if planning_mode not in {"legacy", "conservative"}:
@@ -445,33 +459,37 @@ def anchored_planned_retrieve(
         if reuse_query_embeddings
         else {}
     )
-    weighted_runs: list[tuple[list[RetrievedChunk], float]] = []
     weights = conservative_run_weights(specs) if conservative else anchored_run_weights(specs)
-    for spec, weight in zip(specs, weights):
-        run_top_k = top_k if spec.group == "anchor" else candidate_k
-        run_candidate_k = anchor_candidate_k if spec.group == "anchor" else candidate_k
-        run = retrieve_with_strategy(
-            collection,
-            spec.query,
-            embedding_model,
-            ollama_host,
-            top_k=run_top_k,
-            candidate_k=run_candidate_k,
-            category=spec.category,
-            rerank_mode="none",
-            retrieval_strategy=retrieval_strategy,
-            chunks_path=chunks_path,
-            query_embedding=embedding_by_query.get(spec.query),
-            use_embedding_cache=reuse_query_embeddings,
+    requests = [
+        PlannedRunRequest(
+            spec=spec,
+            top_k=top_k if spec.group == "anchor" else candidate_k,
+            candidate_k=(
+                anchor_candidate_k if spec.group == "anchor" else candidate_k
+            ),
+            weight=weight,
         )
-        if spec.aspect:
-            for item in run:
-                item.aspect = spec.aspect
-        weighted_runs.append((run, weight))
+        for spec, weight in zip(specs, weights)
+    ]
+    namespace = planned_cache_namespace(collection, chunks_path, cache_namespace)
+    runs = execute_planned_run_requests(
+        requests,
+        collection=collection,
+        embedding_model=embedding_model,
+        ollama_host=ollama_host,
+        retrieval_strategy=retrieval_strategy,
+        chunks_path=chunks_path,
+        embedding_by_query=embedding_by_query,
+        reuse_query_embeddings=reuse_query_embeddings,
+        parallel_runs=parallel_runs,
+        max_workers=max_workers,
+        use_candidate_cache=use_candidate_cache and reuse_query_embeddings,
+        cache_namespace=namespace,
+    )
 
     fused = reciprocal_rank_fusion(
-        [run for run, _ in weighted_runs],
-        weights=[weight for _, weight in weighted_runs],
+        runs,
+        weights=[request.weight for request in requests],
     )
     rerank_pool = fused
     if conservative:
@@ -490,13 +508,27 @@ def anchored_planned_retrieve(
             plan.warnings.append(
                 f"cross-encoder pool limited from {len(fused)} to {rerank_pool_size} candidates"
             )
-    prepare_model_residency(rerank_mode, embedding_model, ollama_host)
-    ranked = rerank(query, rerank_pool, len(rerank_pool), rerank_mode)
+    ranked = rerank_planned_candidates(
+        query,
+        rerank_pool,
+        rerank_mode,
+        embedding_model,
+        ollama_host,
+        namespace,
+        use_rerank_cache and reuse_query_embeddings,
+    )
     ranked = apply_plan_boosts(ranked, plan, max_boost=0.006)
     fusion_label = "conservative v3" if conservative else "anchored"
     plan.warnings.append(
         f"{fusion_label} fusion used {len(specs)} deduplicated runs with "
         f"{coverage_slots} coverage slots"
+    )
+    is_parallel = parallel_runs and len(specs) > 1
+    execution_label = "parallel" if is_parallel else "serial"
+    worker_slots = min(max_workers, len(specs)) if is_parallel else min(1, len(specs))
+    plan.warnings.append(
+        f"planned retrieval executed {execution_label} with "
+        f"{worker_slots} worker slots"
     )
     return plan, select_with_bounded_plan_coverage(
         ranked,
@@ -588,6 +620,143 @@ def conservative_run_weights(specs: list[PlannedRunSpec]) -> list[float]:
     }
     counts = {group: sum(1 for spec in specs if spec.group == group) for group in group_totals}
     return [group_totals[spec.group] / counts[spec.group] for spec in specs]
+
+
+def planned_cache_namespace(
+    collection: chromadb.Collection | None,
+    chunks_path: Path,
+    explicit_namespace: str | None,
+) -> str | None:
+    if explicit_namespace:
+        return explicit_namespace
+    if collection is None:
+        return None
+    metadata = getattr(collection, "metadata", None) or {}
+    version = str(metadata.get("index_version", "")).strip()
+    collection_id = str(getattr(collection, "id", "")).strip()
+    if not version and not collection_id:
+        return None
+    try:
+        stat = chunks_path.resolve().stat()
+        chunks_signature = f"{stat.st_mtime_ns}:{stat.st_size}"
+    except FileNotFoundError:
+        chunks_signature = "missing"
+    return f"{version or collection_id}:{chunks_signature}"
+
+
+def execute_planned_run_requests(
+    requests: list[PlannedRunRequest],
+    *,
+    collection: chromadb.Collection,
+    embedding_model: str,
+    ollama_host: str,
+    retrieval_strategy: str,
+    chunks_path: Path,
+    embedding_by_query: dict[str, list[float]],
+    reuse_query_embeddings: bool,
+    parallel_runs: bool,
+    max_workers: int,
+    use_candidate_cache: bool,
+    cache_namespace: str | None,
+) -> list[list[RetrievedChunk]]:
+    if max_workers <= 0:
+        raise ValueError("max_workers must be positive")
+
+    def execute(request: PlannedRunRequest) -> list[RetrievedChunk]:
+        spec = request.spec
+        cache_key = (
+            "planned-candidates-v1",
+            cache_namespace,
+            embedding_model,
+            ollama_host.rstrip("/"),
+            retrieval_strategy,
+            " ".join(spec.query.split()).casefold(),
+            spec.category,
+            request.top_k,
+            request.candidate_k,
+        )
+        hit = False
+        run: list[RetrievedChunk]
+        if use_candidate_cache and cache_namespace:
+            hit, cached = get_cached_candidates(cache_key)
+            if hit:
+                run = cached
+        if not hit:
+            run = retrieve_with_strategy(
+                collection,
+                spec.query,
+                embedding_model,
+                ollama_host,
+                top_k=request.top_k,
+                candidate_k=request.candidate_k,
+                category=spec.category,
+                rerank_mode="none",
+                retrieval_strategy=retrieval_strategy,
+                chunks_path=chunks_path,
+                query_embedding=embedding_by_query.get(spec.query),
+                use_embedding_cache=reuse_query_embeddings,
+            )
+            if use_candidate_cache and cache_namespace:
+                cache_candidates(cache_key, run)
+        if spec.aspect:
+            for item in run:
+                item.aspect = spec.aspect
+        return run
+
+    if not parallel_runs or len(requests) <= 1:
+        return [execute(request) for request in requests]
+    worker_count = min(max_workers, len(requests))
+    with ThreadPoolExecutor(
+        max_workers=worker_count,
+        thread_name_prefix="planned-retrieval",
+    ) as executor:
+        return list(executor.map(execute, requests))
+
+
+def rerank_planned_candidates(
+    query: str,
+    candidates: list[RetrievedChunk],
+    rerank_mode: str,
+    embedding_model: str,
+    ollama_host: str,
+    cache_namespace: str | None,
+    use_rerank_cache: bool,
+) -> list[RetrievedChunk]:
+    if rerank_mode == "none":
+        return rerank(query, candidates, len(candidates), rerank_mode)
+    candidate_fingerprint = tuple(
+        (
+            item.chunk_id,
+            str(item.metadata.get("text_hash", "")),
+            round(float(item.score), 12),
+            round(float(item.distance), 12),
+            item.aspect,
+        )
+        for item in candidates
+    )
+    reranker_signature: Any = rerank_mode
+    if rerank_mode == "cross_encoder":
+        config = reranker_runtime_config()
+        reranker_signature = tuple(
+            (key, str(config.get(key, "")))
+            for key in ("model", "backend", "device", "dtype", "batch_size", "max_length")
+        )
+    cache_key = (
+        "planned-rerank-v1",
+        cache_namespace,
+        reranker_signature,
+        " ".join(query.split()).casefold(),
+        candidate_fingerprint,
+    )
+    if use_rerank_cache and cache_namespace:
+        hit, cached = get_cached_rerank(cache_key)
+        if hit:
+            return cached
+    prepare_model_residency(rerank_mode, embedding_model, ollama_host)
+    ranked = rerank(query, candidates, len(candidates), rerank_mode)
+    if use_rerank_cache and cache_namespace:
+        cache_rerank(cache_key, ranked)
+    return ranked
 
 
 def retrieve_with_strategy(

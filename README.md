@@ -42,6 +42,7 @@ Demo 覆盖复合问题拆解、非固定窗口 chunking、query rewrite/query e
 - Query planning：先理解问题意图，再生成子查询、分类过滤和必答方面。
 - Conservative planner v3：具体问题安全退化为原查询，只对至少两个明确方面执行有上限、保留原实体的扩展。
 - Planned retrieval：多子查询、多分类召回，再做融合、重排和覆盖选择。
+- Planned retrieval 执行优化：唯一查询 embedding 复用后，以最多 4 workers 并行独立召回；候选和重排使用版本感知的有界 LRU。
 - Hybrid retrieval：并行执行 bge-m3 向量召回和 BM25 关键词召回，通过 RRF 按排名融合。
 - 可选 Cross-encoder：用问题和候选片段联合打分；支持多语种 GPU 模型、固定候选评测和小显存互斥驻留。
 - 上下文组装：区分检索证据和对话记忆，避免把记忆当事实来源引用。
@@ -84,6 +85,7 @@ experiments/23_hybrid_retrieval_eval/  Dense/BM25/RRF 对比实验
 experiments/24_cross_encoder_rerank_eval/  固定候选重排对比实验
 experiments/33_incremental_index/  版本化增量构建、验收、启用和回滚
 experiments/34_index_release_gate/  索引离线发布门禁与可追溯报告
+experiments/35_planned_retrieval_parallel_cache/  串行、并行与热缓存 A/B
 data/source_manifests/       高质量资料来源清单
 docs/                        调研记录
 notes/                       学习过程与阶段复盘
@@ -427,6 +429,5 @@ conservative planner v3 将平均检索 runs 从 `18.22` 降到 `1.81`，只有 
 - 给 Web 页面增加更清晰的“答案/来源/审计”展示。
 - 增加更多真实业务数据集，验证跨领域泛化。
 - 扩充 union benchmark 的 query 数量，并对模型严重分歧样本做独立人工复核。
-- 并行执行 planned retrieval 中相互独立的子查询，继续降低复杂问题延迟。
-- 增加候选与重排结果缓存，降低 planned retrieval 的在线延迟。
+- 增加越权、提示注入、来源冲突和知识库外问题的安全回归。
 - 增加 GitHub Actions 或本地一键评测脚本。
