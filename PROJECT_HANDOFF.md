@@ -1,14 +1,16 @@
 # Enterprise RAG Learning Project Handoff
 
-更新日期：2026-08-25
+更新日期：2026-08-26
 
 项目目录：
 
 `C:\Users\Lenovo\Desktop\大模型官方课程-视频资料\学习产出\enterprise-rag-learning-project`
 
-当前开发分支：`feature/versioned-incremental-index`
+当前开发分支：`feature/index-release-gate`
 
-本次功能提交：`a870fb5 Add versioned incremental index lifecycle`
+本次功能提交：`049445a Add index release quality gate`
+
+增量索引已通过 `49023ea Merge versioned incremental index lifecycle` 合并并推送到 `main`。
 
 上一阶段合并包含：
 
@@ -211,9 +213,19 @@ Planner v3 阶段的主要提交已全部合并并推送到 `main`：
 - 真实 54/942/942 索引已封装为 `baseline-20260825-942`，942 个 embedding 全部复用；候选启用和回滚均在同一 Web 进程中通过。
 - 两个 PyPDFLoader 固定问题的候选检索排名与上一阶段完全一致。详细记录位于 `notes/52_versioned_incremental_index.md`。
 
+### 3.13 索引离线发布门禁
+
+- 新增单一命令，依次执行候选结构校验、冻结检索回归和完整 Python 测试，并生成 JSON/Markdown 报告。
+- 冻结 `rag_index_release_gate_v1`：8 条既有跨组件烟测题加 2 条 PyPDFLoader 强制题，总门槛保持历史 direct hybrid 基线 `8/10 = 80%`。
+- 两条 PyPDFLoader 题是 required cases；任一直接证据排名退化都会阻止发布，即使总体通过率仍达标。
+- `--activate` 只有在三个阶段全部通过时才生效；失败或测试进程异常都会留下报告并标记 blocked。
+- 激活前先原子持久化 approved 报告，再切换 active pointer，确保发布决定可追溯。
+- 对 `validation-copy-20260825` 的真实 dry run 和激活演练均通过：structure passed、retrieval 8/10、required failures 0、tests 116/116。
+- 激活演练后已成功 rollback，当前恢复 `baseline-20260825-942`。详细记录位于 `notes/53_index_release_gate.md`。
+
 ## 4. 当前未完成工作
 
-P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定、PyPDFLoader metadata 官方来源补齐和版本化增量索引均已完成。当前没有功能阻塞。下一项是把知识库更新所需的结构校验、固定检索回归和完整测试收敛成单一离线发布门禁，减少人工串联步骤。
+P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定、PyPDFLoader metadata 官方来源、版本化增量索引和索引离线发布门禁均已完成。当前没有功能阻塞。下一项是并行执行 planned retrieval 的独立检索请求，并评估候选与重排缓存对延迟和结果一致性的影响。
 
 ### 4.1 Holdout 状态
 
@@ -229,18 +241,19 @@ P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定、PyPDFLo
 - conservative planner 只扩展已定义、证据明确的 RAG 问题模式。具体 API、产品事实或不确定复合问题会安全退化为原查询。
 - Web 的覆盖审计依赖 planner 识别出明确 aspects；安全退化的问题会显示“未运行”。
 - 本地 Ollama 的答案生成具有随机性，偶尔会漏写来源编号；自动 Web 回归会将其标记为 `citation_present` 失败，需结合定向复验区分格式波动与功能回归。
-- 当前使用项目既有 unittest 入口完成 111 项完整 Python 回归；项目尚未建立独立 CI 门禁。
+- 当前使用项目既有 unittest 入口完成 116 项完整 Python 回归；项目尚未建立独立 CI 门禁。
 
 ### 4.3 当前工作区状态
 
-- 分支：`feature/versioned-incremental-index`
-- 本阶段功能提交：`a870fb5 Add versioned incremental index lifecycle`。
+- 分支：`feature/index-release-gate`
+- 本阶段功能提交：`049445a Add index release quality gate`。
 - `feature/safe-source-refresh` 已通过 `e8a0583` 合并到 `main`；功能分支仍保留在本地和远程，没有删除。
 - `feature/web-remote-api` 已通过 `b6b8624` 合并到 `main` 并推送；功能分支仍保留在本地和远程，没有删除。
 - 功能分支 `feature/rag-evaluation-benchmark` 已完整合并，目前仍保留在本地和远程，没有删除。
 - 默认激活版本为 `baseline-20260825-942`，包含 54 documents / 942 chunks / 942 Chroma rows；旧 938 条索引和 legacy 942 条索引均保留，生成语料、版本目录和激活指针由 `.gitignore` 排除。
-- 完整运行 111 个 Python 单元测试，全部通过；前端 JavaScript 语法检查通过；`eval/` 下无改动。
-- 功能分支从 `main` 的 `69d98f5` 创建，尚未合并；本文件继续按惯例单独提交。
+- 完整运行 116 个 Python 单元测试，全部通过；前端 JavaScript 语法检查通过。
+- `eval/` 仅新增冻结门禁规格 `eval/benchmarks/rag_index_release_gate_v1/gate.json`，未修改旧数据集、qrels 或历史结果。
+- 增量索引已通过 `49023ea` 合并到 `main`；当前门禁功能分支从该提交创建，尚未合并；本文件继续按惯例单独提交。
 
 ## 5. 已知问题与边界
 
@@ -292,6 +305,13 @@ python -m unittest tests.test_web_defaults tests.test_query_planning_v3 tests.te
 python -m unittest tests.test_index_versioning
 python experiments\33_incremental_index\manage_index.py status
 python experiments\33_incremental_index\manage_index.py plan
+```
+
+索引离线发布门禁：
+
+```powershell
+python -m unittest tests.test_index_release_gate
+python experiments\34_index_release_gate\run_gate.py --manifest data\indexes\llm_rag_versions\validation-copy-20260825\manifest.json
 ```
 
 JavaScript 语法检查：
@@ -346,17 +366,16 @@ python webapp\server.py --host 127.0.0.1 --port 8766
 
 ### P3：独立验证完成后的工程优化
 
-Planner v3、direct/planned v3 自动端到端回归、临时远程 API、安全来源刷新和 PyPDFLoader metadata 官方证据均已实现、验收并合并到 `main`，默认本地索引已更新。版本化增量索引已在功能分支完成并通过真实数据验收，等待合并。
+Planner v3、direct/planned v3 自动端到端回归、临时远程 API、安全来源刷新、PyPDFLoader metadata 官方证据和版本化增量索引均已实现、验收并合并到 `main`。索引离线发布门禁已在功能分支完成并通过真实数据验收，等待合并。
 
-本轮已完成：实现来源差异、增量切分、embedding 复用、删除清理、不可变版本清单、候选验收、原子启用、Web 热加载、缓存失效和一步回滚。
+本轮已完成：将候选结构校验、10 条冻结检索回归、完整测试、可追溯报告和受控激活收敛为单一离线发布门禁。
 
 后续工程优先级：
 
-1. 把知识库更新的结构校验、固定检索、完整测试和版本报告收敛为单一离线发布门禁。
-2. 并行执行 planned retrieval 的独立子查询，并增加候选和重排缓存。
-3. 增加越权、提示注入、来源冲突和知识库外问题测试。
-4. 增加 GitHub Actions 或本地一键评测入口。
-5. 准备作品集架构图、演示问题、指标表和技术决策说明。
+1. 并行执行 planned retrieval 的独立子查询，并评估候选和重排缓存。
+2. 增加越权、提示注入、来源冲突和知识库外问题测试。
+3. 增加 GitHub Actions 或本地一键评测入口。
+4. 准备作品集架构图、演示问题、指标表和技术决策说明。
 
 ## 8. 新任务启动方式
 

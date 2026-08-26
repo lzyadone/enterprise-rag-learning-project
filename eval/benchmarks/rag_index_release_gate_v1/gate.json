@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "gate_id": "rag_index_release_gate_v1",
+  "description": "Direct hybrid retrieval baseline plus mandatory PyPDFLoader coverage checks.",
+  "retrieval": {
+    "strategy": "hybrid",
+    "rerank_mode": "lexical",
+    "top_k": 7,
+    "candidate_k": 16,
+    "min_pass_rate": 0.8
+  },
+  "cases": [
+    {
+      "id": "rag_compound_overview",
+      "question": "RAG系统分为哪些类别，有哪些关键技术，主要瓶颈有哪些？",
+      "expected_categories": ["RAG overview", "RAG challenges", "chunking", "embedding", "retrieval", "reranking", "evaluation"],
+      "min_category_hits": 4,
+      "expected_source_terms": ["Agentic", "Hybrid", "Failure", "chunk", "embedding", "rerank"],
+      "min_source_term_hits": 3
+    },
+    {
+      "id": "chunking_not_fixed_window",
+      "question": "文档切分为什么不能只用固定窗口？企业级RAG通常会考虑哪些边界？",
+      "expected_categories": ["chunking"],
+      "min_category_hits": 1,
+      "expected_source_terms": ["splitter", "chunk", "Markdown", "structure", "recursive"],
+      "min_source_term_hits": 2
+    },
+    {
+      "id": "rag_evaluation_reliability",
+      "question": "如何评估RAG答案是否可靠？需要看哪些指标和badcase？",
+      "expected_categories": ["evaluation"],
+      "min_category_hits": 1,
+      "expected_source_terms": ["faithfulness", "relevance", "correctness", "LLM"],
+      "min_source_term_hits": 2
+    },
+    {
+      "id": "embedding_bge_m3_role",
+      "question": "BGE-M3这类embedding模型在RAG知识库里负责什么？",
+      "expected_categories": ["embedding"],
+      "min_category_hits": 1,
+      "expected_source_terms": ["BGE-M3", "embedding", "dense", "sparse", "multi-vector"],
+      "min_source_term_hits": 2
+    },
+    {
+      "id": "reranking_role",
+      "question": "重排在RAG里解决什么问题？它和普通向量检索是什么关系？",
+      "expected_categories": ["reranking", "retrieval"],
+      "min_category_hits": 1,
+      "expected_source_terms": ["rerank", "reranker", "ColBERT", "retrieval", "candidate"],
+      "min_source_term_hits": 2
+    },
+    {
+      "id": "query_planning_expansion",
+      "question": "复杂问题在RAG里为什么要做query rewrite或query expansion？",
+      "expected_categories": ["querying", "retrieval", "RAG overview"],
+      "min_category_hits": 1,
+      "expected_source_terms": ["query", "expansion", "rewrite", "retrieval", "sub-question"],
+      "min_source_term_hits": 2
+    },
+    {
+      "id": "vector_db_chroma_role",
+      "question": "Chroma在这个RAG项目里承担什么角色？metadata filter有什么用？",
+      "expected_categories": ["vector db", "retrieval"],
+      "min_category_hits": 1,
+      "expected_source_terms": ["Chroma", "collection", "metadata", "filter", "where"],
+      "min_source_term_hits": 2
+    },
+    {
+      "id": "enterprise_rag_retrieval",
+      "question": "企业级RAG为什么需要混合检索、metadata过滤和重排，而不是只做一次向量相似度搜索？",
+      "expected_categories": ["retrieval", "reranking", "vector db", "RAG challenges"],
+      "min_category_hits": 2,
+      "expected_source_terms": ["metadata", "filter", "rerank", "hybrid", "failure"],
+      "min_source_term_hits": 3
+    },
+    {
+      "id": "pypdf_page_metadata",
+      "question": "我现在要把一个 PDF 文档加载进 RAG，用的是 LangChain，想知道它的 PDFLoader 会保留页码信息吗？还是需要自己额外处理？",
+      "expected_chunk_ids": ["langchain_pypdf_metadata::chunk_0000"],
+      "min_chunk_hits": 1,
+      "max_chunk_rank": 1,
+      "required": true
+    },
+    {
+      "id": "pypdf_chunk_metadata",
+      "question": "我现在用LangChain的PyPDFLoader加载PDF，我需要让每个chunk都带上页码，但我不确定它会不会自动保留页码信息，还是要自己手动加metadata？",
+      "expected_chunk_ids": [
+        "langchain_pypdf_metadata::chunk_0000",
+        "langchain_pypdf_metadata::chunk_0001",
+        "langchain_text_splitter_metadata::chunk_0000",
+        "langchain_text_splitter_metadata::chunk_0001"
+      ],
+      "min_chunk_hits": 4,
+      "max_chunk_rank": 5,
+      "required": true
+    }
+  ]
+}
