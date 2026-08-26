@@ -39,6 +39,7 @@ from src.openai_compatible_client import (  # noqa: E402
 )
 from src.query_planning import plan_query, plan_query_v3  # noqa: E402
 from src.retrieval import RetrievedChunk, planned_retrieve, retrieve_with_strategy  # noqa: E402
+from src.retrieval_cache import clear_retrieval_caches  # noqa: E402
 from src.retrieval_routing import RetrievalRouteDecision, route_retrieval  # noqa: E402
 
 
@@ -112,6 +113,7 @@ class IndexRuntime:
     db_dir: Path
     chunks_path: Path
     version_id: str
+    cache_namespace: str
     manifest_path: Path | None
 
 
@@ -169,6 +171,7 @@ class AppState:
                 db_dir=db_dir,
                 chunks_path=chunks_path,
                 version_id=str(manifest["version_id"]),
+                cache_namespace=str(manifest["version_id"]),
                 manifest_path=manifest_path,
             )
 
@@ -180,6 +183,7 @@ class AppState:
             db_dir=self.default_db_dir,
             chunks_path=DEFAULT_CHUNKS_PATH,
             version_id="legacy",
+            cache_namespace=f"legacy:{self.default_db_dir}",
             manifest_path=None,
         )
 
@@ -195,6 +199,7 @@ class AppState:
             self._index_runtime = runtime
             self._active_pointer_signature = signature
             clear_bm25_cache()
+            clear_retrieval_caches()
             return True
 
     def index_runtime(self) -> IndexRuntime:
@@ -403,6 +408,7 @@ def handle_ask(payload: dict[str, Any]) -> dict[str, Any]:
                 chunks_path=index_runtime.chunks_path,
                 query_plan=routing_plan,
                 fusion_mode=planned_fusion_mode,
+                cache_namespace=index_runtime.cache_namespace,
             )
 
     short_memory_context = memory.context() if use_memory else ""

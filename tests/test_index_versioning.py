@@ -27,6 +27,7 @@ from src.index_versioning import (
     write_json_atomic,
     write_jsonl,
 )
+from src.retrieval_cache import cache_candidates, retrieval_cache_info
 from webapp.server import AppState, PROJECT_ROOT as WEB_PROJECT_ROOT
 
 
@@ -207,11 +208,14 @@ class IndexVersioningTest(unittest.TestCase):
             first_runtime = state.index_runtime()
             self.assertEqual("first", first_runtime.version_id)
             self.assertEqual(1, first_runtime.collection.count())
+            cache_candidates(("test-version",), ["cached"])
+            self.assertEqual(1, retrieval_cache_info()["candidates"]["size"])
 
             activate_index_manifest(active_path, second_manifest, WEB_PROJECT_ROOT)
             second_runtime = state.index_runtime()
             self.assertEqual("second-version", second_runtime.version_id)
             self.assertEqual(2, second_runtime.collection.count())
+            self.assertEqual(0, retrieval_cache_info()["candidates"]["size"])
 
             del state, first_runtime, second_runtime
             SharedSystemClient.clear_system_cache()
