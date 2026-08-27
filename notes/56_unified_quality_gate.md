@@ -19,7 +19,7 @@
 5. `javascript_syntax`：使用 Node 检查 Web 前端脚本；
 6. `index_release_gate`：只有显式传入候选 manifest 时才运行。
 
-任一必需阶段失败，统一门槛即失败。报告只保存阶段状态、返回码、计数和耗时，不保存子进程输出、文档正文、模型回答或凭据。
+任一必需阶段失败，统一门槛即失败。报告只保存阶段状态、返回码、计数、耗时和失败测试名称，不保存断言正文、子进程输出、文档正文、模型回答或凭据。
 
 ## CI 与本地边界
 
@@ -34,7 +34,7 @@
 
 - dependency check：passed；
 - Python compile：passed；
-- unit tests：134/134 passed；
+- unit tests：135/135 passed；
 - security gate：8/8 passed；
 - JavaScript syntax：passed。
 

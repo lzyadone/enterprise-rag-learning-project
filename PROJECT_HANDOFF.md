@@ -6,9 +6,11 @@
 
 `C:\Users\Lenovo\Desktop\大模型官方课程-视频资料\学习产出\enterprise-rag-learning-project`
 
-当前开发分支：`feature/unified-quality-gate`
+当前开发分支：`main`
 
-本次功能提交：`a7bce65 Add unified local and CI quality gate`
+本次合并提交：`e375932 Merge unified quality gate`
+
+统一质量门槛已通过该提交合并并推送到 `main`。
 
 RAG 安全回归已通过 `f915a7d Merge RAG security release gate` 合并并推送到 `main`。
 
@@ -253,8 +255,8 @@ Planner v3 阶段的主要提交已全部合并并推送到 `main`：
 - GitHub Actions 在 pull request、`main` push 和手动触发时调用同一入口；CI 模式强制要求 Node。
 - 本地未安装 Node 时可标记前端检查 skipped，也可通过 `--require-node` 和 `--node-executable` 将指定运行时设为强制检查。
 - 显式传入候选索引 manifest 后，统一入口追加既有索引发布门禁，但不会自动激活索引。
-- 报告只保存阶段状态、返回码、计数和耗时，不保存子进程输出、文档正文、模型回答或凭据。
-- 核心模式通过：依赖、编译、`134/134` 测试、`8/8` 安全案例和 JavaScript 全部 passed；追加 `validation-copy-20260825` 后索引门槛同样 passed。详细记录位于 `notes/56_unified_quality_gate.md`。
+- 报告只保存阶段状态、返回码、计数、耗时和失败测试名称，不保存断言正文、子进程输出、文档正文、模型回答或凭据。
+- 核心模式通过：依赖、编译、`135/135` 测试、`8/8` 安全案例和 JavaScript 全部 passed；追加 `validation-copy-20260825` 后索引门槛同样 passed。详细记录位于 `notes/56_unified_quality_gate.md`。
 
 ## 4. 当前未完成工作
 
@@ -427,7 +429,7 @@ python webapp\server.py --host 127.0.0.1 --port 8766
 
 ### P3：独立验证完成后的工程优化
 
-Planner v3、direct/planned v3 自动端到端回归、临时远程 API、安全来源刷新、PyPDFLoader metadata 官方证据、版本化增量索引、索引离线发布门禁、planned retrieval 并行/缓存和 RAG 安全回归均已实现、验收并合并到 `main`。统一质量门槛已在功能分支完成并通过核心及真实索引验收，等待合并。
+Planner v3、direct/planned v3 自动端到端回归、临时远程 API、安全来源刷新、PyPDFLoader metadata 官方证据、版本化增量索引、索引离线发布门禁、planned retrieval 并行/缓存、RAG 安全回归和统一质量门槛均已实现、验收并合并到 `main`。
 
 本轮已完成：本地/CI 共享入口、手动 CI 触发、确定性报告、CI 强制 Node 检查，以及可选的真实索引发布门槛。
 

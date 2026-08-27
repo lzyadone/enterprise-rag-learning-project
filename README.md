@@ -200,7 +200,7 @@ python experiments\37_unified_quality_gate\run_quality_gate.py `
   --manifest data\indexes\llm_rag_versions\index-YYYYMMDD\manifest.json
 ```
 
-报告默认写入 `data/runtime/unified_quality_gate/`，只记录阶段状态、计数和耗时。GitHub Actions 在 pull request、`main` 推送和手动触发时调用同一入口；云端不读取本地索引，也不需要模型凭据。
+报告默认写入 `data/runtime/unified_quality_gate/`，只记录阶段状态、计数、耗时和失败测试名称，不保存测试输出正文。GitHub Actions 在 pull request、`main` 推送和手动触发时调用同一入口；云端不读取本地索引，也不需要模型凭据。
 
 ## 启动 Web 工作台
 

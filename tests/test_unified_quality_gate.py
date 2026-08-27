@@ -64,6 +64,19 @@ class UnifiedQualityGateTest(unittest.TestCase):
         self.assertEqual("failed", report["status"])
         self.assertEqual(["compile_python"], report["failed_stages"])
 
+    def test_failed_test_names_are_recorded_without_failure_output(self) -> None:
+        def runner(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(
+                command,
+                1,
+                "FAIL: test_example (tests.test_example.ExampleTest.test_example)\nRan 1 test",
+                "assertion details",
+            )
+
+        result = MODULE.run_stage("unit_tests", ["python"], Path("."), runner)
+        self.assertEqual(["test_example"], result["failed_tests"])
+        self.assertNotIn("assertion details", repr(result))
+
     def test_manifest_adds_index_release_gate(self) -> None:
         runner = FakeRunner()
         report = self.run_gate(runner, manifest=Path("candidate/manifest.json"))

@@ -54,6 +54,11 @@ def run_stage(
     if stage_id == "unit_tests":
         match = re.search(r"Ran\s+(\d+)\s+tests?", combined)
         result["test_count"] = int(match.group(1)) if match else 0
+        result["failed_tests"] = re.findall(
+            r"^(?:FAIL|ERROR):\s+([^\s(]+)",
+            combined,
+            flags=re.MULTILINE,
+        )
         if result["status"] == "passed" and result["test_count"] == 0:
             result["status"] = "failed"
     elif stage_id == "security_gate":
@@ -196,6 +201,8 @@ def main() -> int:
         elif "case_count" in stage:
             detail = f" ({stage['passed_count']}/{stage['case_count']} cases)"
         print(f"{stage['id']}: {stage['status']}{detail}")
+        if stage.get("failed_tests"):
+            print(f"  failed_tests: {', '.join(stage['failed_tests'])}")
     print(f"unified_quality_gate: {report['status']}")
     print(f"report: {output}")
     return 0 if report["status"] == "passed" else 1
