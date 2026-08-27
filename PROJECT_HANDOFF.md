@@ -6,9 +6,11 @@
 
 `C:\Users\Lenovo\Desktop\大模型官方课程-视频资料\学习产出\enterprise-rag-learning-project`
 
-当前开发分支：`feature/portfolio-delivery`
+当前开发分支：`main`
 
-本次功能提交：`edc60c5 Add evidence-backed RAG portfolio package`
+本次合并提交：`dfe6738 Merge portfolio delivery package`
+
+作品集交付材料已通过该提交合并并推送到 `main`。
 
 统一质量门槛已通过 `e375932 Merge unified quality gate` 合并并推送到 `main`，失败诊断收尾提交为 `2049d56`。
 
