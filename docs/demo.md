@@ -1,5 +1,7 @@
 # Demo Cases
 
+> 当前面向作品集和面试的演示流程已整理到 [portfolio/demo_script.md](portfolio/demo_script.md)。本页保留早期 10 题 planned-hybrid 评测中的代表性案例，便于追溯历史结果。
+
 本页整理最新端到端评测中的代表性问答，用来展示项目效果。对应评测基线见：
 
 - `eval/rag_system_full_after_chroma_query_docs/summary.md`

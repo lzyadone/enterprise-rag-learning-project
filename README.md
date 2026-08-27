@@ -25,9 +25,15 @@
 
 ## Demo 展示
 
-代表性问答案例见：
+作品集材料：
 
-- `docs/demo.md`
+- [作品集入口](docs/portfolio/README.md)
+- [系统架构](docs/portfolio/architecture.md)
+- [指标与证据](docs/portfolio/metrics.md)
+- [关键技术决策](docs/portfolio/technical_decisions.md)
+- [10 分钟演示脚本](docs/portfolio/demo_script.md)
+
+历史代表性问答案例见 [docs/demo.md](docs/demo.md)。
 
 Demo 覆盖复合问题拆解、非固定窗口 chunking、query rewrite/query expansion、Chroma metadata filter、企业级混合检索/重排，以及知识边界拒答。
 
@@ -60,9 +66,11 @@ flowchart LR
     B --> C["Structure-aware chunking"]
     C --> V["Delta plan and immutable index version"]
     V --> D["Reuse or create bge-m3 embeddings"]
-    D --> E["Chroma dense index"]
+    D --> RG["Index release gate"]
+    RG --> E["Active Chroma dense index"]
     C --> S["BM25 sparse index"]
-    Q["User question"] --> P["Query planning"]
+    Q["User question"] --> QS["Security and knowledge boundary"]
+    QS --> P["Direct or conservative planning"]
     P --> R["Planned retrieval"]
     E --> R
     S --> R
@@ -70,7 +78,7 @@ flowchart LR
     RR --> K["Context assembly"]
     M["Short/long memory"] --> K
     K --> G["Answer generation"]
-    G --> AU["Faithfulness and coverage audit"]
+    G --> AU["Faithfulness, coverage and security audit"]
     AU --> W["Web workbench"]
 ```
 
@@ -439,6 +447,16 @@ conservative planner v3 将平均检索 runs 从 `18.22` 降到 `1.81`，只有 
 - `notes/45_deepseek_natural_query_development.md`
 - `notes/46_natural_query_retrieval_quality.md`
 - `notes/47_conservative_query_planner_v3.md`
+- `notes/48_planner_v3_holdout_release_decision.md`
+- `notes/49_web_planned_v3_experiment.md`
+- `notes/50_web_remote_api_and_e2e.md`
+- `notes/51_pypdfloader_metadata_source_refresh.md`
+- `notes/52_versioned_incremental_index.md`
+- `notes/53_index_release_gate.md`
+- `notes/54_planned_retrieval_parallel_and_cache.md`
+- `notes/55_rag_security_regression.md`
+- `notes/56_unified_quality_gate.md`
+- `notes/57_portfolio_delivery.md`
 
 ## 适合作品集展示的点
 
