@@ -38,6 +38,8 @@ Demo 覆盖复合问题拆解、非固定窗口 chunking、query rewrite/query e
 - 正式入库流程：fetch -> markdown -> structure-aware chunking -> embedding -> Chroma index。
 - 版本化增量索引：按文档/chunk 指纹识别变化，只重新切分变化来源并复用未变化 embedding；候选验收后原子启用，可一步回滚。
 - 索引发布门禁：一条命令完成候选结构校验、冻结检索回归、完整单元测试和版本报告，失败时禁止激活。
+- RAG 安全门槛：在检索和模型调用前拒绝越权与提示注入，隔离不可信证据，并对知识边界和显式来源冲突做确定性回归。
+- 统一质量门槛：本地与 GitHub Actions 共用同一入口，覆盖依赖、编译、完整测试、安全回归和前端语法；本地可追加真实索引发布检查。
 - 非固定窗口切分：按 Markdown 结构、标题和段落边界切分，再用软/硬长度约束兜底。
 - Query planning：先理解问题意图，再生成子查询、分类过滤和必答方面。
 - Conservative planner v3：具体问题安全退化为原查询，只对至少两个明确方面执行有上限、保留原实体的扩展。
@@ -86,6 +88,8 @@ experiments/24_cross_encoder_rerank_eval/  固定候选重排对比实验
 experiments/33_incremental_index/  版本化增量构建、验收、启用和回滚
 experiments/34_index_release_gate/  索引离线发布门禁与可追溯报告
 experiments/35_planned_retrieval_parallel_cache/  串行、并行与热缓存 A/B
+experiments/36_rag_security_regression/  RAG 安全冻结样例与发布门槛
+experiments/37_unified_quality_gate/  本地与 CI 共用的一键质量门槛
 data/source_manifests/       高质量资料来源清单
 docs/                        调研记录
 notes/                       学习过程与阶段复盘
@@ -177,6 +181,26 @@ python experiments\34_index_release_gate\run_gate.py `
 ```
 
 需要在全部检查通过后直接启用时，显式增加 `--activate`。门禁包含内容与 Chroma 一致性检查、10 条冻结检索题和完整 Python 测试；报告写入 `data/runtime/index_release_gate/`。详细规则见 `notes/53_index_release_gate.md`。
+
+## 一键质量验收
+
+本地核心验收只需一个命令：
+
+```powershell
+python experiments\37_unified_quality_gate\run_quality_gate.py
+```
+
+它依次检查 Python 依赖一致性、源码编译、完整单元测试、冻结安全门槛和前端 JavaScript 语法。系统没有 Node 时，本地默认会将前端语法标记为 skipped；发布前可使用 `--require-node` 将其设为强制项，也可通过 `--node-executable` 指定 Node 路径。
+
+候选索引发布前，传入 manifest 追加结构与真实检索门槛：
+
+```powershell
+python experiments\37_unified_quality_gate\run_quality_gate.py `
+  --require-node `
+  --manifest data\indexes\llm_rag_versions\index-YYYYMMDD\manifest.json
+```
+
+报告默认写入 `data/runtime/unified_quality_gate/`，只记录阶段状态、计数和耗时。GitHub Actions 在 pull request、`main` 推送和手动触发时调用同一入口；云端不读取本地索引，也不需要模型凭据。
 
 ## 启动 Web 工作台
 
@@ -429,5 +453,4 @@ conservative planner v3 将平均检索 runs 从 `18.22` 降到 `1.81`，只有 
 - 给 Web 页面增加更清晰的“答案/来源/审计”展示。
 - 增加更多真实业务数据集，验证跨领域泛化。
 - 扩充 union benchmark 的 query 数量，并对模型严重分歧样本做独立人工复核。
-- 增加越权、提示注入、来源冲突和知识库外问题的安全回归。
-- 增加 GitHub Actions 或本地一键评测脚本。
+- 准备作品集架构图、演示问题、指标表和技术决策说明。
