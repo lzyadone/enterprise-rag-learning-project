@@ -6,9 +6,11 @@
 
 `C:\Users\Lenovo\Desktop\大模型官方课程-视频资料\学习产出\enterprise-rag-learning-project`
 
-当前开发分支：`feature/rag-security-regression`
+当前开发分支：`feature/unified-quality-gate`
 
-本次功能提交：`42e66a4 Add deterministic RAG security release gate`
+本次功能提交：`a7bce65 Add unified local and CI quality gate`
+
+RAG 安全回归已通过 `f915a7d Merge RAG security release gate` 合并并推送到 `main`。
 
 Planned retrieval 并行与缓存已通过 `f08ab87 Merge planned retrieval parallel cache` 合并并推送到 `main`。
 
@@ -245,9 +247,18 @@ Planner v3 阶段的主要提交已全部合并并推送到 `main`：
 - 支持通过 `conflict_group` 与 `claim_position` 元数据识别显式来源冲突，并要求答案披露冲突、引用所有相关来源。
 - 安全审计已并入最终 `quality_pass`；冻结门槛 `8/8`、完整测试 `130/130`、真实 Web 拒绝/知识边界接口验收全部通过。详细记录位于 `notes/55_rag_security_regression.md`。
 
+### 3.16 本地与 CI 统一质量门槛
+
+- 新增单一入口，顺序运行依赖一致性、Python 编译、完整单元测试、冻结安全门槛和前端 JavaScript 语法检查。
+- GitHub Actions 在 pull request、`main` push 和手动触发时调用同一入口；CI 模式强制要求 Node。
+- 本地未安装 Node 时可标记前端检查 skipped，也可通过 `--require-node` 和 `--node-executable` 将指定运行时设为强制检查。
+- 显式传入候选索引 manifest 后，统一入口追加既有索引发布门禁，但不会自动激活索引。
+- 报告只保存阶段状态、返回码、计数和耗时，不保存子进程输出、文档正文、模型回答或凭据。
+- 核心模式通过：依赖、编译、`134/134` 测试、`8/8` 安全案例和 JavaScript 全部 passed；追加 `validation-copy-20260825` 后索引门槛同样 passed。详细记录位于 `notes/56_unified_quality_gate.md`。
+
 ## 4. 当前未完成工作
 
-P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定，以及后续的资料刷新、版本化索引、索引发布门禁、planned retrieval 并行/缓存和 RAG 安全回归均已完成。当前没有功能阻塞。下一项是增加 GitHub Actions 或本地一键评测入口，把现有测试与发布门槛统一成可持续执行的工程检查。
+P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定，以及后续的资料刷新、版本化索引、索引发布门禁、planned retrieval 并行/缓存、RAG 安全回归和统一质量门槛均已完成。当前没有功能阻塞。下一项转向作品集交付，准备架构图、演示问题、指标表和关键技术决策说明。
 
 ### 4.1 Holdout 状态
 
@@ -352,6 +363,18 @@ python -m unittest tests.test_rag_security
 python experiments\36_rag_security_regression\run_security_regression.py
 ```
 
+统一核心质量门槛：
+
+```powershell
+python experiments\37_unified_quality_gate\run_quality_gate.py
+```
+
+追加本地候选索引门槛：
+
+```powershell
+python experiments\37_unified_quality_gate\run_quality_gate.py --require-node --manifest data\indexes\llm_rag_versions\validation-copy-20260825\manifest.json
+```
+
 JavaScript 语法检查：
 
 ```powershell
@@ -404,14 +427,13 @@ python webapp\server.py --host 127.0.0.1 --port 8766
 
 ### P3：独立验证完成后的工程优化
 
-Planner v3、direct/planned v3 自动端到端回归、临时远程 API、安全来源刷新、PyPDFLoader metadata 官方证据、版本化增量索引、索引离线发布门禁和 planned retrieval 并行/缓存均已实现、验收并合并到 `main`。RAG 安全回归已在功能分支完成并通过真实 Web 验收，等待合并。
+Planner v3、direct/planned v3 自动端到端回归、临时远程 API、安全来源刷新、PyPDFLoader metadata 官方证据、版本化增量索引、索引离线发布门禁、planned retrieval 并行/缓存和 RAG 安全回归均已实现、验收并合并到 `main`。统一质量门槛已在功能分支完成并通过核心及真实索引验收，等待合并。
 
-本轮已完成：查询前置拒绝、知识边界固定响应、凭据请求对象清理、证据隔离、显式来源冲突审计，以及 8 项冻结安全门槛。
+本轮已完成：本地/CI 共享入口、手动 CI 触发、确定性报告、CI 强制 Node 检查，以及可选的真实索引发布门槛。
 
 后续工程优先级：
 
-1. 增加 GitHub Actions 或本地一键评测入口。
-2. 准备作品集架构图、演示问题、指标表和技术决策说明。
+1. 准备作品集架构图、演示问题、指标表和技术决策说明。
 
 ## 8. 新任务启动方式
 
