@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from src.retrieval import RetrievedChunk
+from src.rag_security import assess_evidence_security, security_prompt_rules
 
 
 @dataclass
@@ -35,6 +36,7 @@ class AssembledContext:
     sections: list[ContextSection]
     used_chars: int
     max_chars: int
+    security: dict[str, Any]
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -43,6 +45,7 @@ class AssembledContext:
             "sections": [section.as_dict() for section in self.sections],
             "used_chars": self.used_chars,
             "max_chars": self.max_chars,
+            "security": self.security,
         }
 
 
@@ -72,6 +75,7 @@ def assemble_context(
         used += len(memory_block)
 
     evidence_blocks: list[str] = []
+    included_retrieved: list[RetrievedChunk] = []
     for idx, item in enumerate(retrieved, start=1):
         metadata = item.metadata
         header = (
@@ -81,10 +85,11 @@ def assemble_context(
             f"aspect={item.aspect or 'general'} | "
             f"chunk_id={item.chunk_id}"
         )
-        block = f"{header}\n{item.document.strip()}"
+        block = f'<retrieved_source id="{idx}">\n{header}\n{item.document.strip()}\n</retrieved_source>'
         if used + len(block) > max_chars and evidence_blocks:
             break
         evidence_blocks.append(block)
+        included_retrieved.append(item)
         sections.append(
             ContextSection(
                 name=f"source_{idx}",
@@ -106,6 +111,7 @@ def assemble_context(
         sections=sections,
         used_chars=used,
         max_chars=max_chars,
+        security=assess_evidence_security(included_retrieved),
     )
 
 
@@ -115,6 +121,7 @@ def build_answer_prompt(
     answer_requirements: list[str] | None = None,
 ) -> str:
     requirements_text = build_requirements_text(answer_requirements or [])
+    security_rules = security_prompt_rules(assembled.security)
     return f"""你是一个大模型工程知识库助手。请只根据“检索资料”回答问题。
 
 领域规则：
@@ -123,6 +130,8 @@ def build_answer_prompt(
 - 事实判断必须来自检索资料，并标注检索资料编号。
 - 如果检索资料没有支持某个判断，不要写这个判断。
 {requirements_text}
+
+{security_rules}
 
 强制输出格式：
 结论：
