@@ -6,11 +6,11 @@
 
 `C:\Users\Lenovo\Desktop\大模型官方课程-视频资料\学习产出\enterprise-rag-learning-project`
 
-当前开发分支：`main`
+当前开发分支：`feature/portfolio-delivery`
 
-本次合并提交：`e375932 Merge unified quality gate`
+本次功能提交：`edc60c5 Add evidence-backed RAG portfolio package`
 
-统一质量门槛已通过该提交合并并推送到 `main`。
+统一质量门槛已通过 `e375932 Merge unified quality gate` 合并并推送到 `main`，失败诊断收尾提交为 `2049d56`。
 
 RAG 安全回归已通过 `f915a7d Merge RAG security release gate` 合并并推送到 `main`。
 
@@ -258,9 +258,18 @@ Planner v3 阶段的主要提交已全部合并并推送到 `main`：
 - 报告只保存阶段状态、返回码、计数、耗时和失败测试名称，不保存断言正文、子进程输出、文档正文、模型回答或凭据。
 - 核心模式通过：依赖、编译、`135/135` 测试、`8/8` 安全案例和 JavaScript 全部 passed；追加 `validation-copy-20260825` 后索引门槛同样 passed。详细记录位于 `notes/56_unified_quality_gate.md`。
 
+### 3.17 作品集交付材料
+
+- 新增 `docs/portfolio/README.md` 作为统一入口，按架构、指标、技术决策和演示流程组织材料。
+- 架构文档包含数据与索引、在线问答、质量与发布三个平面，以及请求时序和索引发布状态图。
+- 指标表区分开发集、独立 holdout、固定烟测、Web E2E、性能微基准和安全/发布门槛，每项链接到仓库内证据。
+- 技术决策文档记录 10 项主要取舍的背景、选择、证据和代价，包括默认 direct、cross-encoder 非默认、记忆/事实分离和不可变索引。
+- 10-12 分钟演示脚本覆盖 direct、planned v3、PyPDFLoader 官方证据、记忆、安全拒绝和知识边界，并列出页面验收信号。
+- 新增 4 项文档回归测试，检查相对链接、结构化指标、代码围栏、架构关键路径和演示覆盖；本轮统一门槛为 `139/139` tests、`8/8` security、JavaScript passed。详细记录位于 `notes/57_portfolio_delivery.md`。
+
 ## 4. 当前未完成工作
 
-P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定，以及后续的资料刷新、版本化索引、索引发布门禁、planned retrieval 并行/缓存、RAG 安全回归和统一质量门槛均已完成。当前没有功能阻塞。下一项转向作品集交付，准备架构图、演示问题、指标表和关键技术决策说明。
+P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定，以及后续的资料刷新、版本化索引、索引发布门禁、planned retrieval 并行/缓存、RAG 安全回归、统一质量门槛和书面作品集均已完成。当前没有功能阻塞。下一项如继续发布包装，是从真实 Web 捕获无凭据截图、录制短演示并创建 GitHub release；如继续工程研究，应引入新的真实业务域和小规模真人 qrels。
 
 ### 4.1 Holdout 状态
 
@@ -377,6 +386,12 @@ python experiments\37_unified_quality_gate\run_quality_gate.py
 python experiments\37_unified_quality_gate\run_quality_gate.py --require-node --manifest data\indexes\llm_rag_versions\validation-copy-20260825\manifest.json
 ```
 
+作品集文档检查：
+
+```powershell
+python -m unittest tests.test_portfolio_docs
+```
+
 JavaScript 语法检查：
 
 ```powershell
@@ -431,11 +446,16 @@ python webapp\server.py --host 127.0.0.1 --port 8766
 
 Planner v3、direct/planned v3 自动端到端回归、临时远程 API、安全来源刷新、PyPDFLoader metadata 官方证据、版本化增量索引、索引离线发布门禁、planned retrieval 并行/缓存、RAG 安全回归和统一质量门槛均已实现、验收并合并到 `main`。
 
-本轮已完成：本地/CI 共享入口、手动 CI 触发、确定性报告、CI 强制 Node 检查，以及可选的真实索引发布门槛。
+本地/CI 共享入口、手动 CI 触发、确定性报告、CI 强制 Node 检查，以及可选的真实索引发布门槛均已完成并合并到 `main`。
+
+### P4：作品集交付（已完成）
+
+本轮已完成：作品集入口、三层架构图、请求时序、索引发布状态图、证据化指标表、10 项技术决策和 10-12 分钟演示脚本。文档链接和核心指标已纳入自动测试。
 
 后续工程优先级：
 
-1. 准备作品集架构图、演示问题、指标表和技术决策说明。
+1. 可选发布包装：真实 Web 截图、短演示视频和 GitHub release。
+2. 可选下一轮工程研究：新业务域数据集与小规模真人 qrels。
 
 ## 8. 新任务启动方式
 
