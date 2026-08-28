@@ -6,11 +6,13 @@
 
 `C:\Users\Lenovo\Desktop\大模型官方课程-视频资料\学习产出\enterprise-rag-learning-project`
 
-当前开发分支：`feature/beginner-project-guide`
+当前开发分支：`main`
 
 本阶段功能提交：`b99b7d5 Add beginner-friendly complete project guide`。
 
-零基础完整项目指南已完成并通过统一质量门槛，等待合并到 `main`。
+本次合并提交：`6c64e32 Merge beginner project guide`。
+
+零基础完整项目指南已完成、通过统一质量门槛并合并到 `main`。
 
 作品集交付材料已通过该提交合并并推送到 `main`。
 
@@ -303,8 +305,8 @@ P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定，以及�
 
 ### 4.3 当前工作区状态
 
-- 分支：`feature/beginner-project-guide`。
-- 本阶段功能提交：`b99b7d5 Add beginner-friendly complete project guide`；统一质量门槛已通过，等待合并到 `main`。
+- 分支：`main`。
+- 本阶段功能提交：`b99b7d5 Add beginner-friendly complete project guide`；已通过 `6c64e32 Merge beginner project guide` 合并到 `main`。
 - `feature/safe-source-refresh` 已通过 `e8a0583` 合并到 `main`；功能分支仍保留在本地和远程，没有删除。
 - `feature/web-remote-api` 已通过 `b6b8624` 合并到 `main` 并推送；功能分支仍保留在本地和远程，没有删除。
 - 功能分支 `feature/rag-evaluation-benchmark` 已完整合并，目前仍保留在本地和远程，没有删除。
