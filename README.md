@@ -27,6 +27,7 @@
 
 作品集材料：
 
+- [零基础完整项目指南](docs/BEGINNER_PROJECT_GUIDE.md)
 - [作品集入口](docs/portfolio/README.md)
 - [系统架构](docs/portfolio/architecture.md)
 - [指标与证据](docs/portfolio/metrics.md)
