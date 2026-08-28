@@ -6,6 +6,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PORTFOLIO_DIR = PROJECT_ROOT / "docs" / "portfolio"
+BEGINNER_GUIDE = PROJECT_ROOT / "docs" / "BEGINNER_PROJECT_GUIDE.md"
 PORTFOLIO_FILES = [
     PORTFOLIO_DIR / "README.md",
     PORTFOLIO_DIR / "architecture.md",
@@ -17,14 +18,18 @@ PORTFOLIO_FILES = [
 
 class PortfolioDocsTest(unittest.TestCase):
     def test_required_portfolio_documents_exist(self) -> None:
-        for path in PORTFOLIO_FILES:
+        for path in PORTFOLIO_FILES + [BEGINNER_GUIDE]:
             self.assertTrue(path.is_file(), path)
             text = path.read_text(encoding="utf-8")
             self.assertGreater(len(text), 500, path)
             self.assertEqual(0, text.count("```") % 2, path)
 
     def test_relative_markdown_links_resolve(self) -> None:
-        documents = PORTFOLIO_FILES + [PROJECT_ROOT / "README.md", PROJECT_ROOT / "docs" / "demo.md"]
+        documents = PORTFOLIO_FILES + [
+            BEGINNER_GUIDE,
+            PROJECT_ROOT / "README.md",
+            PROJECT_ROOT / "docs" / "demo.md",
+        ]
         failures = []
         for document in documents:
             text = document.read_text(encoding="utf-8")
@@ -69,6 +74,7 @@ class PortfolioDocsTest(unittest.TestCase):
     def test_architecture_and_demo_cover_release_boundaries(self) -> None:
         architecture = (PORTFOLIO_DIR / "architecture.md").read_text(encoding="utf-8")
         demo = (PORTFOLIO_DIR / "demo_script.md").read_text(encoding="utf-8")
+        guide = BEGINNER_GUIDE.read_text(encoding="utf-8")
 
         self.assertGreaterEqual(architecture.count("```mermaid"), 3)
         for marker in ["查询安全与知识边界", "Chroma dense index", "BM25 sparse index", "rollback"]:
@@ -81,6 +87,16 @@ class PortfolioDocsTest(unittest.TestCase):
             "明天杭州天气如何",
         ]:
             self.assertIn(marker, demo)
+        for marker in [
+            "什么是 RAG",
+            "Embedding 是什么",
+            "为什么要做混合检索",
+            "版本化增量索引",
+            "换成其他数据能不能迁移",
+            "术语表",
+            "推荐学习路线",
+        ]:
+            self.assertIn(marker, guide)
 
 
 if __name__ == "__main__":
