@@ -1,14 +1,16 @@
 # Enterprise RAG Learning Project Handoff
 
-更新日期：2026-08-27
+更新日期：2026-08-28
 
 项目目录：
 
 `C:\Users\Lenovo\Desktop\大模型官方课程-视频资料\学习产出\enterprise-rag-learning-project`
 
-当前开发分支：`main`
+当前开发分支：`feature/beginner-project-guide`
 
-本次合并提交：`dfe6738 Merge portfolio delivery package`
+本阶段功能提交：`b99b7d5 Add beginner-friendly complete project guide`。
+
+零基础完整项目指南已完成并通过统一质量门槛，等待合并到 `main`。
 
 作品集交付材料已通过该提交合并并推送到 `main`。
 
@@ -269,9 +271,18 @@ Planner v3 阶段的主要提交已全部合并并推送到 `main`：
 - 10-12 分钟演示脚本覆盖 direct、planned v3、PyPDFLoader 官方证据、记忆、安全拒绝和知识边界，并列出页面验收信号。
 - 新增 4 项文档回归测试，检查相对链接、结构化指标、代码围栏、架构关键路径和演示覆盖；本轮统一门槛为 `139/139` tests、`8/8` security、JavaScript passed。详细记录位于 `notes/57_portfolio_delivery.md`。
 
+### 3.18 零基础完整项目指南
+
+- 新增 `docs/BEGINNER_PROJECT_GUIDE.md`，用 31 个主题章节从图书馆类比开始解释完整 RAG 系统。
+- 内容覆盖来源管理、文档切分、Embedding、Chroma、BM25、RRF、Planner v3、重排、并行缓存、上下文组装、模型调用、审计、记忆、安全和 Web 工作台。
+- 单独解释版本化增量索引、索引发布门禁、离线评测、qrels、holdout、测试与 GitHub Actions。
+- 提供完整请求生命周期、目录地图、本地运行方式、数据迁移方法、常见问题、术语表和推荐学习路线。
+- 根 README 与作品集入口均已加入链接；文档自动测试覆盖存在性、长度、围栏、相对链接和关键主题。
+- 统一质量门槛通过：`139/139` tests、`8/8` security、JavaScript passed。详细记录位于 `notes/58_beginner_project_guide.md`。
+
 ## 4. 当前未完成工作
 
-P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定，以及后续的资料刷新、版本化索引、索引发布门禁、planned retrieval 并行/缓存、RAG 安全回归、统一质量门槛和书面作品集均已完成。当前没有功能阻塞。下一项如继续发布包装，是从真实 Web 捕获无凭据截图、录制短演示并创建 GitHub release；如继续工程研究，应引入新的真实业务域和小规模真人 qrels。
+P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定，以及后续的资料刷新、版本化索引、索引发布门禁、planned retrieval 并行/缓存、RAG 安全回归、统一质量门槛、书面作品集和零基础完整指南均已完成。当前没有功能阻塞。下一项如继续发布包装，是从真实 Web 捕获无凭据截图、录制短演示并创建 GitHub release；如继续工程研究，应引入新的真实业务域和小规模真人 qrels。
 
 ### 4.1 Holdout 状态
 
@@ -287,21 +298,21 @@ P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定，以及�
 - conservative planner 只扩展已定义、证据明确的 RAG 问题模式。具体 API、产品事实或不确定复合问题会安全退化为原查询。
 - Web 的覆盖审计依赖 planner 识别出明确 aspects；安全退化的问题会显示“未运行”。
 - 本地 Ollama 的答案生成具有随机性，偶尔会漏写来源编号；自动 Web 回归会将其标记为 `citation_present` 失败，需结合定向复验区分格式波动与功能回归。
-- 当前使用项目既有 unittest 入口完成 122 项完整 Python 回归；项目尚未建立独立 CI 门禁。
+- 当前统一质量门槛包含依赖一致性、Python 编译、139 项单元测试、8 项安全案例和前端 JavaScript 语法检查，并已接入 GitHub Actions。
 - candidate/rerank cache 是进程内缓存，不跨进程持久化；热缓存 `12.67x` 只代表预热 embedding 后的重复检索阶段，不代表页面端到端提速。
 
 ### 4.3 当前工作区状态
 
-- 分支：`feature/planned-retrieval-parallel-cache`
-- 本阶段功能提交：`14b2b2e Parallelize and cache planned retrieval`。
+- 分支：`feature/beginner-project-guide`。
+- 本阶段功能提交：`b99b7d5 Add beginner-friendly complete project guide`；统一质量门槛已通过，等待合并到 `main`。
 - `feature/safe-source-refresh` 已通过 `e8a0583` 合并到 `main`；功能分支仍保留在本地和远程，没有删除。
 - `feature/web-remote-api` 已通过 `b6b8624` 合并到 `main` 并推送；功能分支仍保留在本地和远程，没有删除。
 - 功能分支 `feature/rag-evaluation-benchmark` 已完整合并，目前仍保留在本地和远程，没有删除。
 - 默认激活版本为 `baseline-20260825-942`，包含 54 documents / 942 chunks / 942 Chroma rows；旧 938 条索引和 legacy 942 条索引均保留，生成语料、版本目录和激活指针由 `.gitignore` 排除。
-- 完整运行 122 个 Python 单元测试，全部通过；索引发布门禁和前端 JavaScript 语法检查通过。
+- 完整运行 139 个 Python 单元测试，全部通过；8/8 安全案例和前端 JavaScript 语法检查通过。
 - managed Web E2E regression 为 4/4：focused/compound × direct/planned v3 全部通过。
 - `eval/` 仅新增冻结门禁规格 `eval/benchmarks/rag_index_release_gate_v1/gate.json`，未修改旧数据集、qrels 或历史结果。
-- 索引发布门禁已通过 `e8b961b` 合并到 `main`；当前性能功能分支从该提交创建，尚未合并；本文件继续按惯例单独提交。
+- 作品集交付已通过 `dfe6738` 合并到 `main`；当前指南分支从后续交接提交 `7148295` 创建，本文件继续按惯例单独提交。
 
 ## 5. 已知问题与边界
 
@@ -394,6 +405,8 @@ python experiments\37_unified_quality_gate\run_quality_gate.py --require-node --
 python -m unittest tests.test_portfolio_docs
 ```
 
+零基础完整项目指南：`docs/BEGINNER_PROJECT_GUIDE.md`。它已包含在上述文档检查中。
+
 JavaScript 语法检查：
 
 ```powershell
@@ -453,6 +466,10 @@ Planner v3、direct/planned v3 自动端到端回归、临时远程 API、安全
 ### P4：作品集交付（已完成）
 
 本轮已完成：作品集入口、三层架构图、请求时序、索引发布状态图、证据化指标表、10 项技术决策和 10-12 分钟演示脚本。文档链接和核心指标已纳入自动测试。
+
+### P5：零基础完整项目指南（已完成）
+
+已完成一份从 RAG 基础概念到本项目全部核心技术、设计取舍、请求流程、迁移方法和学习路线的完整中文指南，并从根 README 和作品集入口接入。指南链接和关键主题已纳入自动测试。
 
 后续工程优先级：
 
