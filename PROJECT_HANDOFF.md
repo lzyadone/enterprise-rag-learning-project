@@ -1,18 +1,22 @@
 # Enterprise RAG Learning Project Handoff
 
-更新日期：2026-08-28
+更新日期：2026-08-29
 
 项目目录：
 
 `C:\Users\Lenovo\Desktop\大模型官方课程-视频资料\学习产出\enterprise-rag-learning-project`
 
-当前开发分支：`main`
+当前开发分支：`feature/resume-project-package`
 
 本阶段功能提交：`b99b7d5 Add beginner-friendly complete project guide`。
 
 本次合并提交：`6c64e32 Merge beginner project guide`。
 
 零基础完整项目指南已完成、通过统一质量门槛并合并到 `main`。
+
+本阶段功能提交：`5110c9f Add resume-ready RAG project package`。
+
+简历项目包装与面试表达已完成并通过统一质量门槛，等待合并到 `main`。
 
 作品集交付材料已通过该提交合并并推送到 `main`。
 
@@ -282,9 +286,18 @@ Planner v3 阶段的主要提交已全部合并并推送到 `main`：
 - 根 README 与作品集入口均已加入链接；文档自动测试覆盖存在性、长度、围栏、相对链接和关键主题。
 - 统一质量门槛通过：`139/139` tests、`8/8` security、JavaScript passed。详细记录位于 `notes/58_beginner_project_guide.md`。
 
+### 3.19 简历项目包装与面试表达
+
+- 新增 `docs/portfolio/resume_project.md`，提供一页简历推荐版和空间受限时的极简版。
+- 针对 AI 应用/RAG、Python 后端、数据/搜索工程三个岗位方向提供可替换表述。
+- 提供 60 秒面试自述、三个重点案例、高频追问、技术关键词和投递前检查清单。
+- 所有量化结果均保留实验口径；明确禁止把 holdout Recall、热缓存微基准或个人项目夸大成开放准确率、整站性能或生产成果。
+- 根 README 与作品集入口已加入链接，文档测试覆盖存在性、长度、围栏、相对链接和关键面试主题。
+- 统一质量门槛通过：`139/139` tests、`8/8` security、JavaScript passed。详细记录位于 `notes/59_resume_project_package.md`。
+
 ## 4. 当前未完成工作
 
-P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定，以及后续的资料刷新、版本化索引、索引发布门禁、planned retrieval 并行/缓存、RAG 安全回归、统一质量门槛、书面作品集和零基础完整指南均已完成。当前没有功能阻塞。下一项如继续发布包装，是从真实 Web 捕获无凭据截图、录制短演示并创建 GitHub release；如继续工程研究，应引入新的真实业务域和小规模真人 qrels。
+P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定，以及后续的资料刷新、版本化索引、索引发布门禁、planned retrieval 并行/缓存、RAG 安全回归、统一质量门槛、书面作品集、零基础指南和简历项目包装均已完成。当前没有功能阻塞。下一项如继续发布包装，是从真实 Web 捕获无凭据截图、录制短演示并创建 GitHub release；如继续工程研究，应引入新的真实业务域和小规模真人 qrels。
 
 ### 4.1 Holdout 状态
 
@@ -305,7 +318,8 @@ P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定，以及�
 
 ### 4.3 当前工作区状态
 
-- 分支：`main`。
+- 分支：`feature/resume-project-package`。
+- 本阶段功能提交：`5110c9f Add resume-ready RAG project package`；统一质量门槛已通过，等待合并到 `main`。
 - 本阶段功能提交：`b99b7d5 Add beginner-friendly complete project guide`；已通过 `6c64e32 Merge beginner project guide` 合并到 `main`。
 - `feature/safe-source-refresh` 已通过 `e8a0583` 合并到 `main`；功能分支仍保留在本地和远程，没有删除。
 - `feature/web-remote-api` 已通过 `b6b8624` 合并到 `main` 并推送；功能分支仍保留在本地和远程，没有删除。
@@ -472,6 +486,10 @@ Planner v3、direct/planned v3 自动端到端回归、临时远程 API、安全
 ### P5：零基础完整项目指南（已完成）
 
 已完成一份从 RAG 基础概念到本项目全部核心技术、设计取舍、请求流程、迁移方法和学习路线的完整中文指南，并从根 README 和作品集入口接入。指南链接和关键主题已纳入自动测试。
+
+### P6：简历项目包装（已完成）
+
+已完成一页简历项目经历、不同岗位改写、60 秒自述、重点面试案例、高频追问和指标表达边界，并从根 README 和作品集入口接入。材料链接和关键主题已纳入自动测试。
 
 后续工程优先级：
 
