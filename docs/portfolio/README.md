@@ -7,6 +7,7 @@
 | 你想了解什么 | 从这里开始 |
 |---|---|
 | 我是小白，想从头理解整个项目 | [零基础完整指南](../BEGINNER_PROJECT_GUIDE.md) |
+| 我要把项目写进简历并准备面试 | [简历项目包装](resume_project.md) |
 | 系统如何工作 | [系统架构](architecture.md) |
 | 指标是否可信 | [指标与证据](metrics.md) |
 | 为什么做这些取舍 | [关键技术决策](technical_decisions.md) |
