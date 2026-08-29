@@ -13,6 +13,7 @@ PORTFOLIO_FILES = [
     PORTFOLIO_DIR / "metrics.md",
     PORTFOLIO_DIR / "technical_decisions.md",
     PORTFOLIO_DIR / "demo_script.md",
+    PORTFOLIO_DIR / "resume_project.md",
 ]
 
 
@@ -75,6 +76,7 @@ class PortfolioDocsTest(unittest.TestCase):
         architecture = (PORTFOLIO_DIR / "architecture.md").read_text(encoding="utf-8")
         demo = (PORTFOLIO_DIR / "demo_script.md").read_text(encoding="utf-8")
         guide = BEGINNER_GUIDE.read_text(encoding="utf-8")
+        resume = (PORTFOLIO_DIR / "resume_project.md").read_text(encoding="utf-8")
 
         self.assertGreaterEqual(architecture.count("```mermaid"), 3)
         for marker in ["查询安全与知识边界", "Chroma dense index", "BM25 sparse index", "rollback"]:
@@ -97,6 +99,15 @@ class PortfolioDocsTest(unittest.TestCase):
             "推荐学习路线",
         ]:
             self.assertIn(marker, guide)
+        for marker in [
+            "企业级 RAG 知识库系统",
+            "60 秒面试自我介绍",
+            "三个重点面试案例",
+            "Recall@10 1.000",
+            "不要虚构公司",
+            "投递前检查清单",
+        ]:
+            self.assertIn(marker, resume)
 
 
 if __name__ == "__main__":
