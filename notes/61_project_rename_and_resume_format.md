@@ -18,13 +18,14 @@
 - 第一段说明知识处理、混合检索、复杂问题拆解和独立评测。
 - 第二段说明版本化索引、Web 工作台、模型接入、安全与持续质量检查。
 - 极简版压缩为一段，适合简历空间有限时使用。
-- 主要技术使用 Markdown 加粗，包括 Python、bge-m3、Chroma、BM25、RRF、Ollama、OpenAI-compatible API、unittest 和 GitHub Actions。
+- 不单独罗列技术栈；主要技术在正文首次出现时直接使用 Markdown 加粗，包括 Python、bge-m3、Chroma、BM25、RRF、Ollama、OpenAI-compatible API、unittest 和 GitHub Actions。
 
 ## 自动检查
 
 文档测试新增以下约束：
 
 - 推荐版不得重新出现以 `- ` 开头的项目符号。
+- 推荐版不得出现独立的“核心技术”列表。
 - Python、Chroma、BM25、RRF、Ollama 和 GitHub Actions 必须保留加粗标记。
 - 原有的相对链接、文档结构、指标和外部术语约束继续生效。
 
