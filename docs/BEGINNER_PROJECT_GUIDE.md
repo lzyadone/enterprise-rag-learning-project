@@ -1,4 +1,4 @@
-# Enterprise RAG Learning Project 零基础完整指南
+# 企业级智能知识库与问答平台：零基础完整指南
 
 更新时间：2026-08-28
 
