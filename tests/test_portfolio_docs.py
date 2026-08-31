@@ -108,6 +108,9 @@ class PortfolioDocsTest(unittest.TestCase):
             "投递前检查清单",
         ]:
             self.assertIn(marker, resume)
+        public_resume = resume.split("## 6. 三个重点面试案例", 1)[0].lower()
+        for internal_name in ["planned v3", "planner v3", "oracle", "retrieval runs", "direct/planned/auto"]:
+            self.assertNotIn(internal_name, public_resume)
 
 
 if __name__ == "__main__":

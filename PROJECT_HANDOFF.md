@@ -1,12 +1,12 @@
 # Enterprise RAG Learning Project Handoff
 
-更新日期：2026-08-29
+更新日期：2026-08-31
 
 项目目录：
 
 `C:\Users\Lenovo\Desktop\大模型官方课程-视频资料\学习产出\enterprise-rag-learning-project`
 
-当前开发分支：`main`
+当前开发分支：`feature/external-project-intro`
 
 本阶段功能提交：`b99b7d5 Add beginner-friendly complete project guide`。
 
@@ -19,6 +19,10 @@
 本次合并提交：`70f6f32 Merge resume project package`。
 
 简历项目包装与面试表达已完成、通过统一质量门槛并合并到 `main`。
+
+本阶段功能提交：`283e569 Clarify external project introduction`。
+
+面向外部读者的项目介绍与简历术语优化已完成并通过统一质量门槛，等待合并到 `main`。
 
 作品集交付材料已通过该提交合并并推送到 `main`。
 
@@ -297,9 +301,17 @@ Planner v3 阶段的主要提交已全部合并并推送到 `main`：
 - 根 README 与作品集入口已加入链接，文档测试覆盖存在性、长度、围栏、相对链接和关键面试主题。
 - 统一质量门槛通过：`139/139` tests、`8/8` security、JavaScript passed。详细记录位于 `notes/59_resume_project_package.md`。
 
+### 3.20 面向外部读者的项目介绍优化
+
+- 重写根 README 顶部简介和项目概览，优先说明企业知识问答场景、完整工程链路、独立评测、索引更新和质量门槛。
+- 作品集首页和简历核心区不再使用 `planned v3`、`oracle`、`retrieval runs`、`direct/planned/auto` 等内部过程名称。
+- 内部版本名分别改写为“受约束的复杂问题拆解”“自动策略与逐题最佳策略一致率”“单问题检索任务数”等可直接理解的表述。
+- 历史实验章节、阶段笔记和证据链接继续保留原始版本名称，确保评测过程可追溯。
+- 文档测试新增外部文案术语回归；统一质量门槛通过：`139/139` tests、`8/8` security、JavaScript passed。详细记录位于 `notes/60_external_project_intro.md`。
+
 ## 4. 当前未完成工作
 
-P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定，以及后续的资料刷新、版本化索引、索引发布门禁、planned retrieval 并行/缓存、RAG 安全回归、统一质量门槛、书面作品集、零基础指南和简历项目包装均已完成。当前没有功能阻塞。下一项如继续发布包装，是从真实 Web 捕获无凭据截图、录制短演示并创建 GitHub release；如继续工程研究，应引入新的真实业务域和小规模真人 qrels。
+P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定，以及后续的资料刷新、版本化索引、索引发布门禁、planned retrieval 并行/缓存、RAG 安全回归、统一质量门槛、书面作品集、零基础指南、简历包装和对外项目介绍优化均已完成。当前没有功能阻塞。下一项如继续发布包装，是从真实 Web 捕获无凭据截图、录制短演示并创建 GitHub release；如继续工程研究，应引入新的真实业务域和小规模真人 qrels。
 
 ### 4.1 Holdout 状态
 
@@ -320,7 +332,8 @@ P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定，以及�
 
 ### 4.3 当前工作区状态
 
-- 分支：`main`。
+- 分支：`feature/external-project-intro`。
+- 本阶段功能提交：`283e569 Clarify external project introduction`；统一质量门槛已通过，等待合并到 `main`。
 - 本阶段功能提交：`5110c9f Add resume-ready RAG project package`；已通过 `70f6f32 Merge resume project package` 合并到 `main`。
 - 本阶段功能提交：`b99b7d5 Add beginner-friendly complete project guide`；已通过 `6c64e32 Merge beginner project guide` 合并到 `main`。
 - `feature/safe-source-refresh` 已通过 `e8a0583` 合并到 `main`；功能分支仍保留在本地和远程，没有删除。
@@ -492,6 +505,10 @@ Planner v3、direct/planned v3 自动端到端回归、临时远程 API、安全
 ### P6：简历项目包装（已完成）
 
 已完成一页简历项目经历、不同岗位改写、60 秒自述、重点面试案例、高频追问和指标表达边界，并从根 README 和作品集入口接入。材料链接和关键主题已纳入自动测试。
+
+### P7：对外项目介绍优化（已完成）
+
+已将 README、作品集首页和简历核心区从内部版本演进语言改写为面向招聘方和首次访问者的能力、结果与工程取舍表达，同时保留技术证据层的历史版本记录。外部文案术语已纳入自动测试。
 
 后续工程优先级：
 
