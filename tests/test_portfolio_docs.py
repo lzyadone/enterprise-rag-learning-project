@@ -100,7 +100,7 @@ class PortfolioDocsTest(unittest.TestCase):
         ]:
             self.assertIn(marker, guide)
         for marker in [
-            "企业级 RAG 知识库系统",
+            "企业级智能知识库与问答平台",
             "60 秒面试自我介绍",
             "三个重点面试案例",
             "Recall@10 1.000",
@@ -111,6 +111,10 @@ class PortfolioDocsTest(unittest.TestCase):
         public_resume = resume.split("## 6. 三个重点面试案例", 1)[0].lower()
         for internal_name in ["planned v3", "planner v3", "oracle", "retrieval runs", "direct/planned/auto"]:
             self.assertNotIn(internal_name, public_resume)
+        recommended = resume.split("## 2. 推荐版本", 1)[1].split("## 3. 极简版本", 1)[0]
+        self.assertNotRegex(recommended, r"(?m)^- ")
+        for highlighted_technology in ["**Python**", "**Chroma**", "**BM25**", "**RRF**", "**Ollama**", "**GitHub Actions**"]:
+            self.assertIn(highlighted_technology, recommended)
 
 
 if __name__ == "__main__":

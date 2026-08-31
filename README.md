@@ -1,4 +1,6 @@
-# Enterprise RAG Learning Project
+# 企业级智能知识库与问答平台
+
+*Enterprise Knowledge Intelligence Platform*
 
 一个面向企业知识问答场景的完整 RAG 实践项目。它从可追踪的官方资料构建知识库，将文档处理、混合检索、复杂问题拆解、答案生成、引用审计、记忆、安全防护、索引发布和 Web 工作台串成一条可验证、可回退的工程链路。
 
