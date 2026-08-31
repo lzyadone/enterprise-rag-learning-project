@@ -6,7 +6,7 @@
 
 `C:\Users\Lenovo\Desktop\大模型官方课程-视频资料\学习产出\enterprise-rag-learning-project`
 
-当前开发分支：`main`
+当前开发分支：`fix/inline-resume-keywords`
 
 本阶段功能提交：`b99b7d5 Add beginner-friendly complete project guide`。
 
@@ -31,6 +31,8 @@
 本次合并提交：`753170c Merge project rename and resume format`。
 
 项目展示名称与简历两段式格式已完成、通过统一质量门槛并合并到 `main`。
+
+本次格式修复提交：`469d63f Highlight technologies inline in resume`，等待合并到 `main`。
 
 作品集交付材料已通过该提交合并并推送到 `main`。
 
@@ -323,6 +325,7 @@ Planner v3 阶段的主要提交已全部合并并推送到 `main`：
 - 新名称已同步到根 README、零基础指南、作品集首页、简历材料和交接文档；GitHub 仓库名暂时不变，避免已有链接失效。
 - 简历推荐版由五条项目符号改为两段正文，极简版压缩为一段。
 - Python、bge-m3、Chroma、BM25、RRF、Ollama、OpenAI-compatible API、unittest 和 GitHub Actions 等主要技术已加粗。
+- 独立“核心技术”列表已移除；每个技术关键词只在正文自然出现时分别加粗。
 - 文档测试新增“两段式推荐版无项目符号”和“关键技术保持加粗”约束。
 - 统一质量门槛通过：`139/139` tests、`8/8` security、JavaScript passed。详细记录位于 `notes/61_project_rename_and_resume_format.md`。
 
@@ -349,7 +352,8 @@ P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定，以及�
 
 ### 4.3 当前工作区状态
 
-- 分支：`main`。
+- 分支：`fix/inline-resume-keywords`。
+- 简历内联技术加粗修复已完成，统一质量门槛已通过，等待合并到 `main`。
 - 本阶段功能提交：`c5ba64c Rename project and streamline resume format`；已通过 `753170c Merge project rename and resume format` 合并到 `main`。
 - 本阶段功能提交：`283e569 Clarify external project introduction`；已通过 `7d35c0f Merge external project introduction` 合并到 `main`。
 - 本阶段功能提交：`5110c9f Add resume-ready RAG project package`；已通过 `70f6f32 Merge resume project package` 合并到 `main`。

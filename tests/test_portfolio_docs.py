@@ -113,6 +113,7 @@ class PortfolioDocsTest(unittest.TestCase):
             self.assertNotIn(internal_name, public_resume)
         recommended = resume.split("## 2. 推荐版本", 1)[1].split("## 3. 极简版本", 1)[0]
         self.assertNotRegex(recommended, r"(?m)^- ")
+        self.assertNotIn("核心技术：", recommended)
         for highlighted_technology in ["**Python**", "**Chroma**", "**BM25**", "**RRF**", "**Ollama**", "**GitHub Actions**"]:
             self.assertIn(highlighted_technology, recommended)
 
