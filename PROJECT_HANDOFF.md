@@ -1,4 +1,4 @@
-# Enterprise RAG Learning Project Handoff
+# 企业级智能知识库与问答平台交接文档
 
 更新日期：2026-08-31
 
@@ -6,7 +6,7 @@
 
 `C:\Users\Lenovo\Desktop\大模型官方课程-视频资料\学习产出\enterprise-rag-learning-project`
 
-当前开发分支：`main`
+当前开发分支：`feature/resume-paragraph-format`
 
 本阶段功能提交：`b99b7d5 Add beginner-friendly complete project guide`。
 
@@ -25,6 +25,10 @@
 本次合并提交：`7d35c0f Merge external project introduction`。
 
 面向外部读者的项目介绍与简历术语优化已完成、通过统一质量门槛并合并到 `main`。
+
+本阶段功能提交：`c5ba64c Rename project and streamline resume format`。
+
+项目展示名称与简历两段式格式已完成并通过统一质量门槛，等待合并到 `main`。
 
 作品集交付材料已通过该提交合并并推送到 `main`。
 
@@ -311,9 +315,18 @@ Planner v3 阶段的主要提交已全部合并并推送到 `main`：
 - 历史实验章节、阶段笔记和证据链接继续保留原始版本名称，确保评测过程可追溯。
 - 文档测试新增外部文案术语回归；统一质量门槛通过：`139/139` tests、`8/8` security、JavaScript passed。详细记录位于 `notes/60_external_project_intro.md`。
 
+### 3.21 项目更名与简历两段式格式
+
+- 对外展示名称更新为“企业级智能知识库与问答平台”，英文名为 “Enterprise Knowledge Intelligence Platform”。
+- 新名称已同步到根 README、零基础指南、作品集首页、简历材料和交接文档；GitHub 仓库名暂时不变，避免已有链接失效。
+- 简历推荐版由五条项目符号改为两段正文，极简版压缩为一段。
+- Python、bge-m3、Chroma、BM25、RRF、Ollama、OpenAI-compatible API、unittest 和 GitHub Actions 等主要技术已加粗。
+- 文档测试新增“两段式推荐版无项目符号”和“关键技术保持加粗”约束。
+- 统一质量门槛通过：`139/139` tests、`8/8` security、JavaScript passed。详细记录位于 `notes/61_project_rename_and_resume_format.md`。
+
 ## 4. 当前未完成工作
 
-P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定，以及后续的资料刷新、版本化索引、索引发布门禁、planned retrieval 并行/缓存、RAG 安全回归、统一质量门槛、书面作品集、零基础指南、简历包装和对外项目介绍优化均已完成。当前没有功能阻塞。下一项如继续发布包装，是从真实 Web 捕获无凭据截图、录制短演示并创建 GitHub release；如继续工程研究，应引入新的真实业务域和小规模真人 qrels。
+P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定，以及后续的资料刷新、版本化索引、索引发布门禁、planned retrieval 并行/缓存、RAG 安全回归、统一质量门槛、书面作品集、零基础指南、简历包装、对外项目介绍优化和简历格式优化均已完成。当前没有功能阻塞。下一项如继续发布包装，是从真实 Web 捕获无凭据截图、录制短演示并创建 GitHub release；如继续工程研究，应引入新的真实业务域和小规模真人 qrels。
 
 ### 4.1 Holdout 状态
 
@@ -334,7 +347,8 @@ P0 独立验证集、P1 独立检索评测、P2 Web 实验发布决定，以及�
 
 ### 4.3 当前工作区状态
 
-- 分支：`main`。
+- 分支：`feature/resume-paragraph-format`。
+- 本阶段功能提交：`c5ba64c Rename project and streamline resume format`；统一质量门槛已通过，等待合并到 `main`。
 - 本阶段功能提交：`283e569 Clarify external project introduction`；已通过 `7d35c0f Merge external project introduction` 合并到 `main`。
 - 本阶段功能提交：`5110c9f Add resume-ready RAG project package`；已通过 `70f6f32 Merge resume project package` 合并到 `main`。
 - 本阶段功能提交：`b99b7d5 Add beginner-friendly complete project guide`；已通过 `6c64e32 Merge beginner project guide` 合并到 `main`。
@@ -511,6 +525,10 @@ Planner v3、direct/planned v3 自动端到端回归、临时远程 API、安全
 ### P7：对外项目介绍优化（已完成）
 
 已将 README、作品集首页和简历核心区从内部版本演进语言改写为面向招聘方和首次访问者的能力、结果与工程取舍表达，同时保留技术证据层的历史版本记录。外部文案术语已纳入自动测试。
+
+### P8：项目更名与简历格式优化（已完成）
+
+已将对外名称更新为“企业级智能知识库与问答平台”，并将简历推荐版改为两段正文、极简版改为一段；主要技术使用加粗格式，格式约束已纳入自动测试。
 
 后续工程优先级：
 
