@@ -1,19 +1,19 @@
 # Enterprise RAG Learning Project
 
-一个面向学习和作品集展示的企业级 RAG Demo。项目从官方文档、论文和开源项目资料构建知识库，支持结构化切分、稠密/稀疏混合检索、query planning、planned retrieval、上下文组装、答案生成、答案审计、长对话记忆和 Web 可视化。
+一个面向企业知识问答场景的完整 RAG 实践项目。它从可追踪的官方资料构建知识库，将文档处理、混合检索、复杂问题拆解、答案生成、引用审计、记忆、安全防护、索引发布和 Web 工作台串成一条可验证、可回退的工程链路。
 
-## 当前结果
+## 项目概览
 
 - 知识库文档：54 篇
 - 结构化 chunks：942 个
-- 检索：Chroma dense retrieval + BM25 sparse retrieval + RRF
+- 检索链路：Chroma 语义召回 + BM25 关键词召回 + RRF 排名融合
 - Embedding：Ollama `bge-m3`
-- 生成模型：DeepSeek API 或 Ollama 本地模型
-- 可选语义重排：`BAAI/bge-reranker-v2-m3`（Transformers + CUDA FP16）
-- 端到端评测：planned hybrid 10/10 通过，quality pass rate 100%
-- 检索实验：direct hybrid 双指标通过率 75%，dense 基线为 62.5%
-- 重排实验：planned hybrid 在 8/8 问题上保持双指标通过；cross-encoder 未提升总体 nDCG，暂不设为默认
-- Planner v3 开发集：direct nDCG@10 为 0.837，planned v2 为 0.737，conservative auto 为 0.853；独立 holdout 已通过无退化门槛，默认继续使用 direct
+- 生成模型：支持 Ollama 本地模型和 OpenAI-compatible 远程 API
+- 复杂问题处理：仅在识别出多个明确回答面时拆解问题，并限制扩展数量，避免过度检索偏离原意
+- 独立检索评测：32 题测试集 Recall@10 `1.000`、nDCG@10 `0.843`，自动策略与逐题最佳策略一致 `31/32`
+- 索引更新：支持差异识别、向量复用、候选验证、原子切换和一步回滚
+- 工程质量：139 项单元测试、8/8 安全案例以及前端语法检查通过，并接入 GitHub Actions
+- 技术取舍：cross-encoder 在固定候选实验中未提升总体 nDCG，因此保留为可选能力而非默认链路
 
 最新评测摘要：
 
@@ -49,10 +49,9 @@ Demo 覆盖复合问题拆解、非固定窗口 chunking、query rewrite/query e
 - RAG 安全门槛：在检索和模型调用前拒绝越权与提示注入，隔离不可信证据，并对知识边界和显式来源冲突做确定性回归。
 - 统一质量门槛：本地与 GitHub Actions 共用同一入口，覆盖依赖、编译、完整测试、安全回归和前端语法；本地可追加真实索引发布检查。
 - 非固定窗口切分：按 Markdown 结构、标题和段落边界切分，再用软/硬长度约束兜底。
-- Query planning：先理解问题意图，再生成子查询、分类过滤和必答方面。
-- Conservative planner v3：具体问题安全退化为原查询，只对至少两个明确方面执行有上限、保留原实体的扩展。
-- Planned retrieval：多子查询、多分类召回，再做融合、重排和覆盖选择。
-- Planned retrieval 执行优化：唯一查询 embedding 复用后，以最多 4 workers 并行独立召回；候选和重排使用版本感知的有界 LRU。
+- 复杂问题拆解：先识别用户问题中的必答方面；只有多个方面都足够明确时才生成少量子查询，并始终保留原始问题。
+- 多路检索与覆盖选择：对子查询和知识类别分别召回，再统一融合、重排，避免答案只覆盖问题的一部分。
+- 检索执行优化：复用相同查询的 embedding，以最多 4 workers 并行独立召回；候选和重排使用版本感知的有界 LRU。
 - Hybrid retrieval：并行执行 bge-m3 向量召回和 BM25 关键词召回，通过 RRF 按排名融合。
 - 可选 Cross-encoder：用问题和候选片段联合打分；支持多语种 GPU 模型、固定候选评测和小显存互斥驻留。
 - 上下文组装：区分检索证据和对话记忆，避免把记忆当事实来源引用。
@@ -72,8 +71,8 @@ flowchart LR
     RG --> E["Active Chroma dense index"]
     C --> S["BM25 sparse index"]
     Q["User question"] --> QS["Security and knowledge boundary"]
-    QS --> P["Direct or conservative planning"]
-    P --> R["Planned retrieval"]
+    QS --> P["Direct retrieval or bounded query decomposition"]
+    P --> R["Hybrid retrieval and result fusion"]
     E --> R
     S --> R
     R --> RR["Optional cross-encoder rerank"]
